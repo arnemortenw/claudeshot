@@ -21,7 +21,8 @@ function check(name, cond, detail) {
   else failures.push(name + (detail !== undefined ? "  -> " + JSON.stringify(detail) : ""));
 }
 
-function makeGame(names) {
+// Everyone has read the briefing unless { briefing: true } keeps them on it.
+function makeGame(names, opts = {}) {
   const log = [];
   const io = { to: (to) => ({ emit: (ev, data) => log.push({ to, ev, data: JSON.parse(JSON.stringify(data)) }) }) };
   const room = { code: "TEST", players: names.map((n, i) => ({ id: "s" + (i + 1), name: n })), settings: {} };
@@ -29,6 +30,7 @@ function makeGame(names) {
   const game = new TreehutGame(room, io, (scores) => { ended = scores; });
   game.start();
   clearInterval(game.timer);           // we crank the clock ourselves
+  if (!opts.briefing) room.players.forEach((p) => game.setInput(p.id, { t: "enter" }));
   const g = {
     game, room, log,
     get ended() { return ended; },
@@ -372,6 +374,58 @@ function vaultGame(names) {
   check("no answer is sent while playing", !/acorn,leaf,mushroom|NEST|"thief"/.test(duringPlay) && !/answer/i.test(duringPlay));
   ["s1", "s2"].forEach((s) => g.input(s, { t: "vote", suspect: "fox" }));
   check("and the fox ends it", g.game.over && g.game.over.outcome === "solved");
+  g.game.stop();
+}
+
+// ================================================================ briefing
+{
+  NOW = 11_000_000;
+  const g = makeGame(["Ada", "Bo", "Cy"], { briefing: true });
+  check("the briefing starts with nobody in", g.state().players.every((p) => !p.entered) && g.state().briefingLeftMs === 60_000);
+  NOW += 30_000;
+  g.tick();
+  check("the clock waits at 15:00 while the party reads", g.state().timeLeftMs === R.GAME_MS && g.state().briefingLeftMs === 30_000);
+  g.game.setInput("s1", { t: "enter" });
+  g.game.setInput("s1", { t: "enter" });
+  g.game.setInput("s2", { t: "enter" });
+  check("players who entered show as entered", g.state().players.filter((p) => p.entered).map((p) => p.name).join() === "Ada,Bo");
+  NOW += 10_000;
+  g.tick();
+  check("the clock still waits for the last reader", g.state().timeLeftMs === R.GAME_MS);
+  g.input("s1", { t: "move", dir: "down" });
+  check("players who entered can already walk", g.me("s1").y === 6);
+  g.game.setInput("s3", { t: "enter" });
+  check("the clock starts when everyone has entered", g.state().briefingLeftMs === 0 && g.game.endsAt === NOW + R.GAME_MS);
+  NOW += 5_000;
+  g.tick();
+  check("and then counts down", g.state().timeLeftMs === R.GAME_MS - 5_000);
+  g.game.stop();
+}
+{
+  NOW = 12_000_000;
+  const g = makeGame(["Ada", "Bo"], { briefing: true });
+  g.game.setInput("s1", { t: "enter" });
+  NOW += 59_000;
+  g.tick();
+  check("before 60 seconds the clock waits", g.state().timeLeftMs === R.GAME_MS);
+  NOW += 1_000;
+  g.tick();
+  check("after 60 seconds the clock starts anyway", g.game.endsAt === NOW + R.GAME_MS && g.state().briefingLeftMs === 0);
+  check("the slow reader is still not entered", g.state().players.find((p) => p.name === "Bo").entered === false);
+  NOW += 1_000;
+  g.tick();
+  check("the clock runs while they finish reading", g.state().timeLeftMs === R.GAME_MS - 1_000);
+  g.game.setInput("s2", { t: "enter" });
+  check("entering late does not move the clock", g.game.endsAt === NOW - 1_000 + R.GAME_MS && g.state().players.every((p) => p.entered));
+  g.game.stop();
+}
+{
+  NOW = 13_000_000;
+  const g = makeGame(["Ada", "Bo"], { briefing: true });
+  g.game.setInput("s1", { t: "enter" });
+  g.room.players = g.room.players.filter((p) => p.id !== "s2");   // Bo leaves while reading
+  g.tick();
+  check("a player who left is not waited for", g.state().briefingLeftMs === 0 && g.game.endsAt === NOW + R.GAME_MS);
   g.game.stop();
 }
 

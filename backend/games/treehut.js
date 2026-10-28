@@ -15,12 +15,14 @@
 //   rule-out { suspect }       toggle a suspect ruled out on the case board
 //   vote { suspect }           vote for the thief, in the Vault
 //   chat { text }
+//   enter                      done reading the briefing (Enter the treehut or Skip)
 // Out: "treehut-state" to the room, "treehut-chat", "treehut-wrong" to the one
 // who answered wrong, and "treehut-over" when the case ends.
 
 const R = require("../../frontend/games/treehut-rules.js");
 
 const TICK_MS = 1000;
+const BRIEFING_MS = 60_000;   // the clock starts when everyone has entered, or after this
 
 // Never sent to clients.
 const ANSWERS = {
@@ -52,6 +54,7 @@ class TreehutGame {
         name: p.name,
         color: R.PLAYER_COLORS[i % R.PLAYER_COLORS.length],
         slot: i,
+        entered: false,
         x: 0, y: 0,
         lastMoveAt: 0,
         score: { challenge: 0, clue: 0, helping: 0 },
@@ -73,6 +76,7 @@ class TreehutGame {
     this.votes = {};         // uid -> suspect
 
     this.startedAt = null;
+    this.briefingUntil = null;     // while set, the party is reading the briefing and the clock waits
     this.endsAt = null;
     this.over = null;
     this.overAt = null;
@@ -81,8 +85,7 @@ class TreehutGame {
   }
 
   start() {
-    this.startedAt = Date.now();
-    this.endsAt = this.startedAt + R.GAME_MS;
+    this.briefingUntil = Date.now() + BRIEFING_MS;
     this.broadcast();
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }
@@ -112,8 +115,32 @@ class TreehutGame {
       }
       return;
     }
+    if (this.briefingUntil) {
+      if (now >= this.briefingUntil || this.everyoneEntered()) this.startClock();
+      else this.broadcast();
+      return;
+    }
     if (now >= this.endsAt) return this.end("timeout");
     this.broadcast();
+  }
+
+  everyoneEntered() {
+    const here = [...this.players.values()].filter((p) => this.present(p));
+    return here.length > 0 && here.every((p) => p.entered);
+  }
+
+  startClock() {
+    this.briefingUntil = null;
+    this.startedAt = Date.now();
+    this.endsAt = this.startedAt + R.GAME_MS;
+    this.broadcast();
+  }
+
+  enter(p) {
+    if (p.entered) return;
+    p.entered = true;
+    if (this.briefingUntil && this.everyoneEntered()) this.startClock();
+    else this.broadcast();
   }
 
   // ---------------------------------------------------------------- input
@@ -131,6 +158,7 @@ class TreehutGame {
       case "rule-out": return this.ruleOut(p, data.suspect);
       case "vote": return this.vote(p, data.suspect);
       case "chat": return this.chat(p, data.text);
+      case "enter": return this.enter(p);
     }
   }
 
@@ -319,7 +347,7 @@ class TreehutGame {
       outcome,                                  // solved | wrong | timeout
       accused: accused || null,
       thief: THIEF,
-      elapsedMs: Math.min(R.GAME_MS, now - this.startedAt),
+      elapsedMs: this.startedAt ? Math.min(R.GAME_MS, now - this.startedAt) : 0,
       solvedCount: Object.keys(this.solved).length,
       challengeCount: Object.keys(R.CHALLENGES).length,
       players,
@@ -336,7 +364,8 @@ class TreehutGame {
     return {
       room: this.roomIdx,
       doorOpen: this.doorOpen,
-      timeLeftMs: this.over ? Math.max(0, this.endsAt - this.overAt) : Math.max(0, this.endsAt - now),
+      timeLeftMs: !this.endsAt ? R.GAME_MS : this.over ? Math.max(0, this.endsAt - this.overAt) : Math.max(0, this.endsAt - now),
+      briefingLeftMs: this.briefingUntil ? Math.max(0, this.briefingUntil - now) : 0,
       players: [...this.players.values()].map((p) => ({
         uid: p.uid,
         id: p.id,
@@ -345,6 +374,7 @@ class TreehutGame {
         x: p.x,
         y: p.y,
         here: this.present(p),
+        entered: p.entered,
         score: { ...p.score, total: p.score.challenge + p.score.clue + p.score.helping },
       })),
       solved: { ...this.solved },
