@@ -7,7 +7,8 @@
 // "treehut-state". This file draws it, walks you there one tile step at a time
 // ("move"), and asks to inspect what you click ("inspect"). The rooms come from
 // treehut-rules.js, the art from treehut-art.js, the challenge windows and hint
-// prompts from treehut-puzzles.js, the start screen from treehut-start.js.
+// prompts from treehut-puzzles.js, the start screen from treehut-start.js, the
+// case board and the end screens from treehut-case.js.
 //
 // Exposes the two globals the platform expects: initTreehutClient /
 // cleanupTreehutClient.
@@ -24,6 +25,7 @@
   window.initTreehutClient = function (socket, myId, room) {
     if (session) session.dispose();
     session = createSession(socket);
+    session.room = room;
     boot(session, room);
   };
 
@@ -61,7 +63,7 @@ body.th-active .logo,body.th-active .tagline,body.th-active #round-indicator{dis
 body.th-active #game-area{width:100%;}
 .th{--stone:#3b3a37;--stone-dark:#262523;--edge-hi:#77746c;--edge-lo:#141312;--text:#d8d2c0;--muted:#8f897a;
   --gold:#f0c040;--green:#4ee04e;--npc:#8fd0ff;--event:#f4e04a;--red:#e8604a;--ch:#f0c040;--cl:#6fc3ff;--hp:#7be07b;
-  display:grid;grid-template-columns:1fr 236px;grid-template-rows:auto 1fr 168px;gap:4px;padding:4px;
+  position:relative;display:grid;grid-template-columns:1fr 236px;grid-template-rows:auto 1fr 168px;gap:4px;padding:4px;
   height:calc(100vh - 6.5rem);min-height:600px;background:var(--stone-dark);color:var(--text);
   font:12px/1.35 Verdana,Tahoma,sans-serif;text-align:left;border-radius:4px;}
 .th *,.th *::before,.th *::after{box-sizing:border-box;}
@@ -238,6 +240,7 @@ body.th-active #game-area{width:100%;}
         if (!path.length) arrive();
       }
       renderSide();
+      kase.update(S);
       puzzles.update(S);
     });
 
@@ -253,7 +256,7 @@ body.th-active #game-area{width:100%;}
       const line = over.outcome === "solved" ? "Case solved! The thief is caught."
         : over.outcome === "wrong" ? "The party named the wrong neighbour. The thief got away."
         : "Time is up. The thief got away.";
-      logLine("ev", line, true);
+      kase.over(over);
       look(line);
     });
 
@@ -684,9 +687,13 @@ body.th-active #game-area{width:100%;}
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
 
+    const kase = window.TREEHUT_CASE.create({
+      s, R, A, frame: root, send, myUid: () => (meP() || {}).uid, nameOf, logLine,
+      isHost: () => !!s.room && s.room.host === s.socket.id,
+    });
     const puzzles = window.TREEHUT_PUZZLES.create({
       s, R, A, view: $.view, send, state: () => S, myUid: () => (meP() || {}).uid,
-      nameOf, look, logLine, floatOver, floatAt,
+      nameOf, look, logLine, floatOver, floatAt, caseBoard: kase.board,
     });
 
     function frame(now) {

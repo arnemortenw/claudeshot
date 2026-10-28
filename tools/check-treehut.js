@@ -285,6 +285,16 @@ function vaultGame(names) {
   check("fox voters score helping", ["s1", "s3", "s5"].every((s) => g.score(s).helping === 10) && ["s2", "s4"].every((s) => g.score(s).helping === 0));
   const rows = over[0].data.players;
   check("the end table has every player's breakdown", rows.length === 5 && rows.every((r) => r.total === r.challenge + r.clue + r.helping && Array.isArray(r.notes)));
+  check("the end table's totals match the Party panel", rows.every((r) => r.total === g.state().players.find((p) => p.uid === r.uid).score.total));
+  check("the end table is ranked by total", rows.every((r, i) => i === 0 || rows[i - 1].total >= r.total));
+  check("the end table has what each did", rows.every((r) => r.notes.reduce((n, x) => n + x.points, 0) === r.total && r.notes.every((x) => typeof x.text === "string")));
+  check("the end table has the overlay's fields", typeof over[0].data.elapsedMs === "number" && over[0].data.solvedCount >= 1 &&
+    over[0].data.challengeCount === 5 && over[0].data.endsIn === R.END_SCREEN_MS && rows.every((r) => r.color && r.uid && r.name));
+  check("fox voters are Team glue, the others Moral support", rows.filter((r) => r.helping).every((r) => r.title === "Team glue") &&
+    rows.filter((r) => !r.total).every((r) => r.title === "Moral support"));
+  g.game.updatePlayerId("s4", "s4b");
+  const again = g.events("treehut-over", "s4b");
+  check("a player who reconnects on the end screen gets it again", again.length === 1 && again[0].data.outcome === "solved" && again[0].data.endsIn <= R.END_SCREEN_MS);
   g.input("s2", { t: "vote", suspect: "fox" });
   g.input("s2", { t: "chat", text: "hi" });
   check("input after the end is ignored", g.state().votes.p2 === "badger" && g.events("treehut-chat").length === 0);
@@ -332,11 +342,25 @@ function vaultGame(names) {
   const over = g.events("treehut-over");
   check("the clock running out ends the case", over.length === 1 && over[0].data.outcome === "timeout" && over[0].data.accused === null);
   check("time's up table has every player", over[0].data.players.length === 3);
+  const bo = over[0].data.players.find((r) => r.name === "Bo");
+  check("time's up table keeps the scores", bo.clue === 15 && bo.total === 15 && bo.title === "Sharp nose" && over[0].data.players[0] === bo);
   NOW += R.END_SCREEN_MS;
   g.tick();
   check("the clock ending calls onEnd with every player", g.ended && g.ended.map((e) => e.name).sort().join() === "Ada,Bo,Cy" &&
     g.ended[0].name === "Bo" && g.ended[0].score === 15);
   check("the game stops after onEnd", g.game.stopped);
+}
+
+// ================================================================ titles
+{
+  NOW = 8_500_000;
+  const g = makeGame(["Ada", "Bo", "Cy", "Di"]);
+  const set = (sid, ch, cl, hp) => Object.assign(g.me(sid).score, { challenge: ch, clue: cl, helping: hp });
+  set("s1", 60, 15, 0); set("s2", 0, 45, 10); set("s3", 30, 0, 40); set("s4", 0, 0, 0);
+  g.game.end("timeout");
+  const t = Object.fromEntries(g.events("treehut-over")[0].data.players.map((r) => [r.name, r.title]));
+  check("titles follow what each helped with most", t.Ada === "Puzzle cracker" && t.Bo === "Sharp nose" && t.Cy === "Team glue" && t.Di === "Moral support", t);
+  g.game.stop();
 }
 
 // ================================================================ reconnect, chat

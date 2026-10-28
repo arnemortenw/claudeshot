@@ -38,6 +38,14 @@ function cleanText(v) {
   return v.replace(/\s+/g, " ").trim().slice(0, R.MAX_CHAT);
 }
 
+// The end screen's one-line title: what a player helped with most.
+function titleFor(row) {
+  if (row.total === 0) return "Moral support";
+  const best = [["challenge", "Puzzle cracker"], ["clue", "Sharp nose"], ["helping", "Team glue"]]
+    .reduce((a, b) => (row[b[0]] > row[a[0]] ? b : a));
+  return best[1];
+}
+
 class TreehutGame {
   constructor(room, io, onEnd) {
     this.room = room;
@@ -103,6 +111,7 @@ class TreehutGame {
     p.id = newId;
     this.players.set(newId, p);
     this.broadcast();
+    if (this.over) this.io.to(newId).emit("treehut-over", { ...this.over, endsIn: Math.max(0, this.overAt + R.END_SCREEN_MS - Date.now()) });
   }
 
   tick() {
@@ -342,6 +351,7 @@ class TreehutGame {
         total: p.score.challenge + p.score.clue + p.score.helping,
         notes: p.notes.slice(),
       }))
+      .map((row) => ({ ...row, title: titleFor(row) }))
       .sort((a, b) => b.total - a.total);
     this.over = {
       outcome,                                  // solved | wrong | timeout

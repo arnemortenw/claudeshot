@@ -42,6 +42,13 @@ socket.on("game-ended", ({ scores }) => {
   window.location.href = "results.html";
 });
 
+// The host pressed Play again on a game's own end screen.
+socket.on("play-again", () => {
+  cleanupAllGames();
+  sessionStorage.removeItem("scores");
+  window.location.href = "lobby.html";
+});
+
 socket.on("kicked", () => {
   sessionStorage.clear();
   window.location.href = "index.html";

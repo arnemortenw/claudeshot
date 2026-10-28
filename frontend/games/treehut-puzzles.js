@@ -10,7 +10,8 @@
 // who answered and only shows that window's failure line.
 //
 // treehut-client.js makes one with TREEHUT_PUZZLES.create(api) and calls
-// open(cid), update(state) and wrong(cid).
+// open(cid), update(state) and wrong(cid). The case board's window comes from
+// treehut-case.js as api.caseBoard.
 (function () {
   "use strict";
 
@@ -85,7 +86,7 @@
 
   window.TREEHUT_PUZZLES = { create };
 
-  // api: { s, R, A, view, send, state, myUid, nameOf, look, logLine, floatOver, floatAt }
+  // api: { s, R, A, view, send, state, myUid, nameOf, look, logLine, floatOver, floatAt, caseBoard }
   function create(api) {
     const { s, R, A, view, send } = api;
     const S = () => api.state();
@@ -106,6 +107,7 @@
 
     // ---------------------------------------------------------------- windows
     const WINDOWS = { barrels: barrelsWin, jars: jarsWin, book: bookWin, map: mapWin };
+    if (api.caseBoard) WINDOWS.accuse = (st) => api.caseBoard(st, close);
 
     function open(cid) {
       const st = S();
@@ -137,6 +139,7 @@
       const k = [st.solved[cid] || "", JSON.stringify(st.hints[cid] || null), st.hintAsks[cid] || ""];
       if (cid === "barrels") k.push(JSON.stringify(st.readRules));
       if (cid === "map") k.push(JSON.stringify(st.mapPieces), st.mapTurns.join());
+      if (cid === "accuse") k.push(JSON.stringify(st.votes), JSON.stringify(st.ruledOut), st.players.map((p) => p.here).join());
       k.push(st.players.map((p) => p.name).join());
       return k.join("|");
     }
