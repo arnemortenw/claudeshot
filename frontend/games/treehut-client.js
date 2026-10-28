@@ -6,7 +6,8 @@
 // The server (backend/games/treehut.js) holds the truth and broadcasts
 // "treehut-state". This file draws it, walks you there one tile step at a time
 // ("move"), and asks to inspect what you click ("inspect"). The rooms come from
-// treehut-rules.js, the art from treehut-art.js.
+// treehut-rules.js, the art from treehut-art.js, the start screen from
+// treehut-start.js.
 //
 // Exposes the two globals the platform expects: initTreehutClient /
 // cleanupTreehutClient.
@@ -96,6 +97,7 @@ body.th-active #game-area{width:100%;}
 .th-prow .nm{color:#e8e2cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .th-prow .nm.me{color:var(--gold);}
 .th-prow.gone .nm{color:var(--muted);text-decoration:line-through;}
+.th-prow .rd{display:block;color:var(--muted);font-size:10px;font-style:italic;}
 .th-prow .pts{font-weight:bold;color:#fff;font-size:11px;}
 .th-bar{grid-column:2/4;height:4px;display:flex;background:#1a1918;}
 .th-bar i{display:block;height:100%;transition:width .4s;}
@@ -188,6 +190,8 @@ body.th-active #game-area{width:100%;}
     const $ = {};
     root.querySelectorAll("[data-el]").forEach((el) => { $[el.dataset.el] = el; });
     const canvas = $.canvas, ctx = canvas.getContext("2d");
+    const start = window.TREEHUT_START.mount($.view, send);
+    s.cleanups.push(() => start.destroy());
 
     // ---------------------------------------------------------------- state
     let S = null;                    // the latest treehut-state
@@ -212,6 +216,7 @@ body.th-active #game-area{width:100%;}
       const first = !S;
       S = st;
       S.players.sort((a, b) => +a.uid.slice(1) - +b.uid.slice(1));   // join order, p1 first
+      start.update(st, st.players.find((p) => p.id === s.socket.id));
       timeAt = performance.now();
       if (st.room !== shownRoom) enterRoom(first);
       noteNews(first);
@@ -516,7 +521,7 @@ body.th-active #game-area{width:100%;}
       $.party.innerHTML = S.players.map((p) => {
         const mine = p.id === s.socket.id;
         return `<div class="th-prow${p.here ? "" : " gone"}" title="${p.here ? "" : "Left the game"}"><span class="dot" style="background:${p.color}"></span>` +
-          `<span class="nm${mine ? " me" : ""}">${esc(p.name)}${mine ? " (you)" : ""}</span><span class="pts">${p.score.total}</span>` +
+          `<span class="nm${mine ? " me" : ""}">${esc(p.name)}${mine ? " (you)" : ""}${p.here && !p.entered ? '<span class="rd">reading the briefing</span>' : ""}</span><span class="pts">${p.score.total}</span>` +
           `<span class="th-bar">${[["challenge", "ch"], ["clue", "cl"], ["helping", "hp"]].map(([k, v]) =>
             `<i style="width:${p.score[k] / max * 100}%;background:var(--${v})"></i>`).join("")}</span></div>`;
       }).join("");
@@ -569,7 +574,7 @@ body.th-active #game-area{width:100%;}
     }
 
     function renderTime(now) {
-      const left = Math.max(0, S.timeLeftMs - (S.over ? 0 : now - timeAt));
+      const left = Math.max(0, S.timeLeftMs - (S.over || S.briefingLeftMs ? 0 : now - timeAt));
       const sec = Math.ceil(left / 1000);
       $.time.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
       $.timefill.style.width = (left / R.GAME_MS * 100) + "%";
