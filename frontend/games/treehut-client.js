@@ -6,7 +6,8 @@
 // The server (backend/games/treehut.js) holds the truth and broadcasts
 // "treehut-state". This file draws it, walks you there one tile step at a time
 // ("move"), and asks to inspect what you click ("inspect"). The rooms come from
-// treehut-rules.js, the art from treehut-art.js.
+// treehut-rules.js, the art from treehut-art.js, the challenge windows and hint
+// prompts from treehut-puzzles.js.
 //
 // Exposes the two globals the platform expects: initTreehutClient /
 // cleanupTreehutClient.
@@ -233,7 +234,10 @@ body.th-active #game-area{width:100%;}
         if (!path.length) arrive();
       }
       renderSide();
+      puzzles.update(S);
     });
+
+    s.listen("treehut-wrong", ({ challenge }) => puzzles.wrong(challenge));
 
     s.listen("treehut-chat", ({ uid, name, text }) => {
       const mine = S && byUid(uid) && byUid(uid).id === s.socket.id;
@@ -294,7 +298,7 @@ body.th-active #game-area{width:100%;}
         if (seen.solved.has(cid)) continue;
         seen.solved.add(cid);
         if (!first) {
-          logLine("ev", `${nameOf(uid)} solved: ${R.CHALLENGES[cid].name}.`, true);
+          logLine("ev", `${nameOf(uid)} solved: ${R.CHALLENGES[cid].name.replace(/[?.!]$/, "")}.`, true);
           floatOver(uid, "+" + R.POINTS.challenge + " challenge", "#f0c040");
         }
       }
@@ -390,6 +394,7 @@ body.th-active #game-area{width:100%;}
       if (o.look) look(o.look);
       if (o.npc) { (R.ROOMS[S.room].drey || []).forEach((l, i) => s.later(() => npc(l), i * 900)); return; }
       send("inspect", { id: o.id });
+      if (o.opens) puzzles.open(o.opens);
     }
 
     function tileFromEvent(e) {
@@ -524,9 +529,11 @@ body.th-active #game-area{width:100%;}
       $.challenges.innerHTML = room.challenges.map((cid) => {
         const c = R.CHALLENGES[cid], by = S.solved[cid];
         const extra = cid === "map" && !by ? ` (${Object.keys(S.mapPieces).length}/${R.MAP_PIECES} pieces)` : "";
-        return `<div class="th-ch${by ? " done" : ""}"><span class="box">${by ? "✓" : ""}</span>` +
-          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(nameOf(by) === "You" ? "you" : nameOf(by))}</span>` : ""}</span></div>`;
+        const asked = !by && S.hintAsks[cid] ? `<span class="ask">${esc(nameOf(S.hintAsks[cid]))} asked for a hint</span>` : "";
+        return `<div class="th-ch${by ? " done" : ""}" data-c="${cid}"><span class="box">${by ? "✓" : ""}</span>` +
+          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(nameOf(by) === "You" ? "you" : nameOf(by))}</span>` : ""}${asked}</span></div>`;
       }).join("");
+      $.challenges.querySelectorAll(".th-ch").forEach((el) => { el.onclick = () => puzzles.open(el.dataset.c); });
       if (!R.doorTile(S.room)) {
         $.door.className = "th-door";
         $.door.textContent = S.solved.accuse ? "Case closed" : "Last room: name the thief";
@@ -672,6 +679,11 @@ body.th-active #game-area{width:100%;}
       g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.35)");
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
+
+    const puzzles = window.TREEHUT_PUZZLES.create({
+      s, R, A, view: $.view, send, state: () => S, myUid: () => (meP() || {}).uid,
+      nameOf, look, logLine, floatOver, floatAt,
+    });
 
     function frame(now) {
       if (s.disposed) return;
