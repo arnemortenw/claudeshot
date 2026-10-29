@@ -865,7 +865,7 @@
       ctx.strokeStyle = "#ff7b39"; ctx.lineWidth = 2.5 * k; ctx.stroke();
     } else if (kind === "teleport") {
       ctx.save(); ctx.globalAlpha = 0.5; ctx.translate(pt.x, pt.y); ctx.scale(SIZE, SIZE);
-      A.drawToy(ctx, A.toyFor(slot), { color: S.players[slot].color, face: q.face, t: S.frame });
+      A.drawToy(ctx, S.players[slot].toy, { color: S.players[slot].color, face: q.face, t: S.frame });
       ctx.restore();
     }
   }
