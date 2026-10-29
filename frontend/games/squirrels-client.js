@@ -6,13 +6,16 @@
 // the server plays on, so what you see is what the shot hits. The art is
 // ported from design v8 and only coloured in where that mask is solid.
 //
-// For now the whole hill is on screen at once. The follow camera, toy art and
-// the full HUD come in the next piece.
+// The toys are drawn by SQUIRRELS_ART (squirrels-art.js). The camera follows
+// the active squirrel, then the shot, then where it landed; each laptop has its
+// own zoom and whole-map view. The HUD is laid out on a 1200 x 640 box scaled
+// to the stage, so it lines up with the canvas at any size.
 
 (function () {
   const R = window.SQUIRRELS_RULES;
   const { SW, SH, K, W, H, WATER, G, SIZE } = R;
-  const Z = SW / W;                         // world to canvas
+  const A = window.SQUIRRELS_ART;
+  const ZMIN = SW / W, ZMAX = 2.6, ZSTART = 1.8;  // canvas px per world px
   const FONT = "Bangers, Impact, 'Arial Black', sans-serif";
   const SEND_AIM_MS = 60;
 
@@ -139,43 +142,27 @@
     T.tc.putImageData(T.img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   }
 
-  // ---------------------------------------------------------------- squirrels
-  // A plain rabid squirrel on a stand in its player's colour. The toys come later.
-  function drawSquirrel(c, color, face, t, blink) {
-    const OL = "rgba(48,24,8,.9)", fur = "#c97b3d", dark = "#8e4f22", muzzle = "#f3d3a4";
-    c.save();
-    c.fillStyle = mix(color, -0.4); ell(c, 0, 1.2, 15, 4.6); c.fill();
-    c.fillStyle = color; ell(c, 0, -0.5, 15, 4); c.fill();
-    c.scale(face, 1);
-    c.lineWidth = 1.2; c.strokeStyle = OL; c.lineJoin = "round";
-    c.beginPath(); c.moveTo(-4, -10); c.bezierCurveTo(-27, -8, -31, -41, -18, -53); c.bezierCurveTo(-8, -61, 5, -53, -4, -46); c.bezierCurveTo(-12, -42, -14, -27, -2, -20); c.closePath();
-    c.fillStyle = dark; c.fill(); c.stroke();
-    c.fillStyle = dark; rr(c, -3, -8, 6, 8, 2.5); c.fill(); c.stroke(); rr(c, 5, -8, 6, 8, 2.5); c.fill(); c.stroke();
-    ell(c, 3, -18, 10.5, 12); c.fillStyle = fur; c.fill(); c.stroke();
-    ell(c, 6, -17, 5.5, 8); c.fillStyle = muzzle; c.fill();
-    ell(c, 1.5, -50, 3.6, 6.8, -0.35); c.fillStyle = fur; c.fill(); c.stroke();
-    ell(c, 8, -38, 12.5, 12.5); c.fillStyle = fur; c.fill(); c.stroke();
-    ell(c, 14.5, -33.5, 7.6, 6); c.fillStyle = muzzle; c.fill(); c.stroke();
-    ell(c, 21.2, -36.2, 2.9, 2.2); c.fillStyle = "#2b1408"; c.fill();
-    if (blink) { c.lineWidth = 1.6; c.beginPath(); c.moveTo(9, -41.5); c.lineTo(17.5, -41.5); c.stroke(); }
-    else {
-      ell(c, 13.2, -42, 4.7, 5.9); c.fillStyle = "#fff"; c.fill(); c.stroke();
-      ell(c, 14.4, -41.4, 3, 3.2); c.fillStyle = "#c0392b"; c.fill();
-      ell(c, 14.8, -41.3, 1.6, 1.8); c.fillStyle = "#111"; c.fill();
+  // ---------------------------------------------------------------- camera
+  // cam.x, cam.y is the world point at the middle of the canvas, cam.z the scale.
+  const w2s = (x, y) => [(x - S.cam.x) * S.cam.z + SW / 2, (y - S.cam.y) * S.cam.z + SH / 2];
+  function updateCam() {
+    const cam = S.cam, st = S.st;
+    const whole = cam.overview || !st || st.ph === "loading" || st.ph === "over";
+    cam.z += ((whole ? ZMIN : cam.zoom) - cam.z) * 0.07;
+    let tx = W / 2, ty = H / 2, k = 0.07;
+    if (!whole) {
+      if (st.shot && S.shotDisp) { tx = S.shotDisp.x; ty = Math.max(S.shotDisp.y, 60); k = 0.12; }
+      else if ((st.ph === "settle" || st.ph === "round") && S.focus) [tx, ty] = S.focus;
+      else if (st.act >= 0 && S.disp[st.act]) { tx = S.disp[st.act].x; ty = S.disp[st.act].y + 15; }
     }
-    c.lineWidth = 2.4; c.strokeStyle = "#3a1a0a"; c.beginPath(); c.moveTo(9.2, -49.2); c.lineTo(17.6, -46.4); c.stroke();
-    c.fillStyle = "#fff"; c.strokeStyle = "rgba(150,200,230,.9)"; c.lineWidth = 0.6;
-    for (let i = 0; i < 4; i++) { const a = t / 9 + i * 1.6; ell(c, 20 + Math.cos(a) * 2.6, -27 + Math.sin(a * 1.3) * 1.6 + i * 0.8, 1.4, 1.4); c.fill(); c.stroke(); }
-    c.restore();
+    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+    // the view may slide a panel's width past the sides and under the top HUD,
+    // so a squirrel at the edge of the map isn't hidden behind them
+    const hw = SW / 2 / cam.z, hh = SH / 2 / cam.z, mx = 215 / cam.z, my = 90 / cam.z;
+    cam.x = Math.max(hw - mx, Math.min(W - hw + mx, cam.x)); cam.y = Math.max(hh - my, Math.min(H - hh, cam.y));
   }
-  function drawGrave(c, color) {
-    c.fillStyle = mix(color, -0.4); ell(c, 0, 1.2, 13, 4); c.fill();
-    c.fillStyle = color; ell(c, 0, -0.4, 13, 3.6); c.fill();
-    c.strokeStyle = "#4a4f5c"; c.lineWidth = 1.4;
-    c.beginPath(); c.moveTo(-10, -1); c.lineTo(-10, -18); c.quadraticCurveTo(-10, -32, 0, -32); c.quadraticCurveTo(10, -32, 10, -18); c.lineTo(10, -1); c.closePath();
-    c.fillStyle = "#9aa0ad"; c.fill(); c.stroke();
-    c.fillStyle = "#4a4f5c"; c.font = `8px ${FONT}`; c.textAlign = "center"; c.fillText("RIP", 0, -15);
-  }
+  function setZoom(z) { S.cam.zoom = Math.max(ZMIN, Math.min(ZMAX, z)); S.cam.overview = false; }
+  function toggleOverview() { S.cam.overview = !S.cam.overview; }
 
   // ---------------------------------------------------------------- page
   const CSS = `
@@ -184,50 +171,56 @@
   body.sq-active .logo,body.sq-active .tagline,body.sq-active #round-indicator{display:none !important;}
   body.sq-active #game-area{width:100%;}
   @font-face{font-family:"Bangers";src:url("assets/fonts/Bangers-Regular.ttf") format("truetype");font-display:swap;}
-  .sq-wrap{width:100%;max-width:min(1200px,calc((100vh - 200px) * 1.875));min-width:640px;margin:0 auto;font-family:${FONT};text-align:left;letter-spacing:.04em;}
-  .sq-teams{display:flex;flex-wrap:wrap;gap:.55rem;margin-bottom:.6rem;}
-  .sq-team{flex:1 1 150px;background:#fffbe8;color:#111;border-radius:4px;padding:.35rem .6rem .45rem;border:3px solid #111;box-shadow:4px 4px 0 #111;transition:transform .15s;}
-  .sq-team.turn{background:var(--c);transform:rotate(-1.5deg) translateY(-2px);box-shadow:6px 6px 0 #111;}
-  .sq-team.out{opacity:.4;filter:grayscale(1);}
-  .sq-team .tn{display:flex;align-items:center;gap:.4rem;font-size:1.35rem;line-height:1;}
-  .sq-team .tn i{width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid #111;}
-  .sq-team .tn small{margin-left:auto;font-size:.95rem;background:#e94560;color:#fff;padding:0 .35rem;border:2px solid #111;transform:rotate(4deg);}
-  .sq-row{display:flex;align-items:center;gap:.35rem;font-size:.95rem;margin-top:.2rem;line-height:1;}
-  .sq-row .n{width:62px;overflow:hidden;white-space:nowrap;}
-  .sq-row .bar{flex:1;height:10px;background:#fff;border:2px solid #111;border-radius:2px;overflow:hidden;}
+  .sq-wrap{width:100%;max-width:min(1200px,calc((100vh - 150px) * 1.875));min-width:640px;margin:0 auto;font-family:${FONT};text-align:left;letter-spacing:.04em;}
+  .sq-side{position:absolute;top:10px;display:flex;flex-direction:column;gap:8px;width:196px;}
+  .sq-side.l{left:10px;} .sq-side.r{right:10px;}
+  .sq-team{background:#fffbe8;color:#111;border-radius:3px;padding:4px 7px 6px;border:3px solid #111;box-shadow:4px 4px 0 #111;transition:transform .15s;}
+  .sq-team.turn{background:var(--c);transform:rotate(-1.5deg) translateY(-1px);box-shadow:6px 6px 0 #111;outline:3px solid #fffbe8;outline-offset:-6px;}
+  .sq-team.out{opacity:.45;filter:grayscale(1);}
+  .sq-team .tn{display:flex;align-items:center;gap:6px;font-size:19px;line-height:1;}
+  .sq-team .tn canvas{width:30px;height:30px;flex:none;}
+  .sq-team .tn span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .sq-team .tn small{margin-left:auto;font-size:13px;background:#e94560;color:#fff;padding:0 4px;border:2px solid #111;transform:rotate(4deg);}
+  .sq-row{display:flex;align-items:center;gap:5px;font-size:13px;margin-top:3px;line-height:1;}
+  .sq-row .n{width:54px;overflow:hidden;white-space:nowrap;}
+  .sq-row .bar{flex:1;height:9px;background:#fff;border:2px solid #111;border-radius:2px;overflow:hidden;}
   .sq-row .bar b{display:block;height:100%;background:var(--c);transition:width .4s;}
   .sq-team.turn .sq-row .bar b{background:#111;}
-  .sq-row .hp{width:28px;text-align:right;}
+  .sq-row .hp{width:24px;text-align:right;}
   .sq-row.dead{opacity:.45;text-decoration:line-through;}
   .sq-stage{position:relative;width:100%;aspect-ratio:1200/640;border-radius:6px;overflow:hidden;border:4px solid #111;box-shadow:7px 7px 0 #111;user-select:none;touch-action:none;}
   .sq-stage canvas{display:block;width:100%;height:100%;cursor:crosshair;}
-  .sq-hud{position:absolute;inset:0;pointer-events:none;color:#111;}
-  .sq-top{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:.6rem;align-items:stretch;}
-  .sq-timer{width:64px;height:64px;border-radius:50%;background:#f7c948;display:grid;place-items:center;font-size:2.3rem;line-height:1;border:4px solid #111;box-shadow:4px 4px 0 #111;color:#111;padding-top:3px;}
+  .sq-hud{position:absolute;left:0;top:0;width:1200px;height:640px;transform-origin:0 0;transform:scale(var(--k,1));pointer-events:none;color:#111;font-size:16px;}
+  .sq-top{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:9.6px;align-items:stretch;}
+  .sq-timer{width:64px;height:64px;border-radius:50%;background:#f7c948;display:grid;place-items:center;font-size:36.8px;line-height:1;border:4px solid #111;box-shadow:4px 4px 0 #111;color:#111;padding-top:3px;}
   .sq-timer.low{background:#e94560;color:#fff;animation:sq-shake .25s infinite alternate;}
   .sq-timer.idle{background:#d8d2c0;}
   @keyframes sq-shake{from{transform:rotate(-6deg) scale(1.05);}to{transform:rotate(6deg) scale(1.12);}}
-  .sq-box{background:#fffbe8 radial-gradient(rgba(0,0,0,.13) 1.2px,transparent 1.4px) 0 0/7px 7px;border:3px solid #111;box-shadow:4px 4px 0 #111;border-radius:3px;padding:.3rem .65rem;font-size:1.05rem;line-height:1;text-align:center;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:.3rem;}
+  .sq-box{background:#fffbe8 radial-gradient(rgba(0,0,0,.13) 1.2px,transparent 1.4px) 0 0/7px 7px;border:3px solid #111;box-shadow:4px 4px 0 #111;border-radius:3px;padding:4.8px 10.4px;font-size:16.8px;line-height:1;text-align:center;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:4.8px;}
   .sq-meter{position:relative;height:10px;background:#fff;border:2px solid #111;border-radius:2px;}
   .sq-meter b{position:absolute;top:0;height:100%;background:#4fc3f7;}
   .sq-wind .sq-meter::after{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:3px;margin-left:-1px;background:#111;}
   .sq-steps .sq-meter b{left:0;background:#7bc043;}
-  .sq-round{min-width:0;background-color:#e94560;color:#fff;font-size:1.25rem;align-items:center;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
-  .sq-dots{display:flex;gap:.3rem;}
+  .sq-round{min-width:0;background-color:#e94560;color:#fff;font-size:20px;align-items:center;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
+  .sq-dots{display:flex;gap:4.8px;}
   .sq-dots i{width:12px;height:12px;border-radius:50%;border:2px solid #111;background:#fff;box-sizing:border-box;}
   .sq-dots i.done{background:var(--c);opacity:.6;}
   .sq-dots i.now{background:var(--c);transform:scale(1.35);}
-  .sq-watch{position:absolute;bottom:50px;left:50%;transform:translateX(-50%) rotate(-1deg);font-size:1.3rem;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:.15rem .8rem;color:#111;white-space:nowrap;opacity:0;transition:opacity .2s;}
+  .sq-watch{position:absolute;bottom:50px;left:50%;transform:translateX(-50%) rotate(-1deg);font-size:20.8px;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:2.4px 12.8px;color:#111;white-space:nowrap;opacity:0;transition:opacity .2s;}
   .sq-watch.show{opacity:1;}
   .sq-banner{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%) scale(.6) rotate(-4deg);text-align:center;opacity:0;transition:opacity .2s,transform .3s cubic-bezier(.3,1.8,.5,1);white-space:nowrap;}
   .sq-banner.show{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(-4deg);}
-  .sq-banner .big{display:inline-block;font-size:5rem;line-height:1;padding:.15em .45em .05em;background:#fffbe8 radial-gradient(rgba(233,69,96,.35) 2px,transparent 2.4px) 0 0/10px 10px;border:5px solid #111;box-shadow:8px 8px 0 #111;-webkit-text-stroke:3px #111;paint-order:stroke fill;text-shadow:4px 4px 0 #111;}
-  .sq-banner .sub{display:inline-block;font-size:1.5rem;margin-top:.7rem;background:#111;color:#fff;padding:.15rem .7rem;transform:rotate(3deg);}
-  .sq-how{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:1.05rem;background:#111;color:#fff;padding:.2rem .8rem;white-space:nowrap;border:2px solid #fff;}
-  .sq-keys{position:absolute;top:12px;left:12px;font-size:.82rem;color:#111;line-height:1.15;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:.3rem .55rem;}
-  .sq-end{position:absolute;right:14px;bottom:14px;pointer-events:auto;background:#e94560;color:#fff;border:3px solid #111;border-radius:3px;font:inherit;font-size:1.45rem;letter-spacing:.05em;padding:.25rem .9rem .1rem;cursor:pointer;box-shadow:4px 4px 0 #111;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
+  .sq-banner .big{display:inline-block;font-size:80px;line-height:1;padding:.15em .45em .05em;background:#fffbe8 radial-gradient(rgba(233,69,96,.35) 2px,transparent 2.4px) 0 0/10px 10px;border:5px solid #111;box-shadow:8px 8px 0 #111;-webkit-text-stroke:3px #111;paint-order:stroke fill;text-shadow:4px 4px 0 #111;}
+  .sq-banner .sub{display:inline-block;font-size:24px;margin-top:11.2px;background:#111;color:#fff;padding:2.4px 11.2px;transform:rotate(3deg);}
+  .sq-how{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:16.8px;background:#111;color:#fff;padding:3.2px 12.8px;white-space:nowrap;border:2px solid #fff;}
+  .sq-keys{position:absolute;bottom:12px;left:12px;display:none;font-size:13.1px;color:#111;line-height:1.15;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:4.8px 8.8px;}
+  .sq-end{position:absolute;right:14px;bottom:62px;pointer-events:auto;background:#e94560;color:#fff;border:3px solid #111;border-radius:3px;font:inherit;font-size:23.2px;letter-spacing:.05em;padding:4px 14.4px 1.6px;cursor:pointer;box-shadow:4px 4px 0 #111;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
   .sq-end:hover{transform:rotate(-2deg) scale(1.06);}
   .sq-end:active{transform:rotate(-2deg) translate(3px,3px);box-shadow:1px 1px 0 #111;}
+  .sq-zoom{position:absolute;right:14px;bottom:14px;display:flex;gap:6px;pointer-events:auto;}
+  .sq-zoom button{background:#fffbe8;color:#111;border:3px solid #111;border-radius:3px;font:inherit;font-size:20px;line-height:1;padding:5px 11px 2px;cursor:pointer;box-shadow:3px 3px 0 #111;letter-spacing:.04em;}
+  .sq-zoom button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #111;}
+  .sq-zoom button.on{background:#f7c948;}
   .sq-reconnect{position:absolute;inset:0;z-index:5;display:none;place-items:center;background:rgba(10,12,30,.55);pointer-events:auto;}
   .sq-reconnect.show{display:grid;}
   .sq-reconnect div{text-align:center;color:#111;background:#fffbe8;border:5px solid #111;box-shadow:8px 8px 0 #111;padding:.6rem 1.4rem .4rem;transform:rotate(-3deg);}
@@ -246,10 +239,11 @@
     document.body.classList.add("sq-active");
     const wrap = el("div", "sq-wrap");
     wrap.innerHTML = `
-      <div class="sq-teams" id="sq-teams"></div>
       <div class="sq-stage" id="sq-stage">
         <canvas id="sq-cv" width="${SW}" height="${SH}"></canvas>
-        <div class="sq-hud">
+        <div class="sq-hud" id="sq-hud">
+          <div class="sq-side l" id="sq-side-l"></div>
+          <div class="sq-side r" id="sq-side-r"></div>
           <div class="sq-top">
             <div class="sq-timer idle" id="sq-timer">30</div>
             <div class="sq-box sq-wind"><span id="sq-wind-label">WIND</span><div class="sq-meter"><b id="sq-wind-bar"></b></div></div>
@@ -258,9 +252,14 @@
           </div>
           <div class="sq-watch" id="sq-watch"></div>
           <div class="sq-banner" id="sq-banner"><div class="big" id="sq-banner-big"></div><div class="sub" id="sq-banner-sub"></div></div>
-          <div class="sq-keys">← → walk · Space jump<br>Drag to aim · Enter ends turn</div>
+          <div class="sq-keys" id="sq-keys">← → walk · Space jump · Enter end turn<br>Wheel or − + zoom · Z map</div>
           <div class="sq-how" id="sq-how">${R.WEAPONS.bazooka.icon} ${R.WEAPONS.bazooka.how}</div>
           <button class="sq-end" id="sq-end" style="display:none">End turn ⏎</button>
+          <div class="sq-zoom">
+            <button id="sq-zoom-out" title="Zoom out (−)">−</button>
+            <button id="sq-zoom-in" title="Zoom in (+)">+</button>
+            <button id="sq-overview" title="Whole map (Z)">Whole map</button>
+          </div>
         </div>
         <div class="sq-reconnect" id="sq-reconnect"><div><big>RECONNECTING…</big><small id="sq-reconnect-sub"></small></div></div>
       </div>
@@ -300,11 +299,13 @@
     if (!st.shot) S.shotDisp = null;
     else if (!S.shotDisp || Math.hypot(S.shotDisp.x - st.shot.x, S.shotDisp.y - st.shot.y) > 120) S.shotDisp = { x: st.shot.x, y: st.shot.y };
     if (prevTurn !== st.turnNo || st.ph !== "aim") S.drag = null;
+    if (prevTurn !== st.turnNo) S.focus = null;
     if (!myTurn() && S.dir) S.dir = 0;
     renderHud();
   }
 
   function onEvent(e) {
+    if (e.k === "crater" || e.k === "splash") S.focus = [e.x, e.k === "crater" ? e.y : WATER - 40];
     if (e.k === "crater") {
       if (e.i === S.carved) { carve(e); S.carved++; }
       boomParticles(e.x, e.y, e.r);
@@ -341,9 +342,11 @@
   // crater, the damage and who goes flying. Squirrels fly away from a blast, so
   // it takes the side away from the nearest squirrel (or the side with more
   // room), stays clear of the HUD at the top, and speed lines point at the hit.
+  // The offset from the impact is picked once; the burst then rides along
+  // with the impact as the camera moves.
   function placeBurst(b, R) {
-    const ix = b.x * Z, iy = b.y * Z;
-    const clear = Math.max(80, b.r * Z * 1.6 + 40);       // keep this far from the impact
+    const [ix, iy] = w2s(b.x, b.y);
+    const clear = Math.max(80, b.r * S.cam.z * 1.6 + 40);       // keep this far from the impact
     const fits = (cx) => cx - R >= 8 && cx + R <= SW - 8;
     let side = ix < SW / 2 ? 1 : -1;
     let near = null, nd = 160;
@@ -356,7 +359,7 @@
     if (!fits(cx)) { side = -side; cx = ix + side * (clear + R); }
     cx = Math.max(R + 8, Math.min(SW - R - 8, cx));
     const cy = Math.max(120 + R * 0.72, Math.min(SH - 90 - R * 0.72, iy - 85));
-    return { cx, cy, ix, iy, side };
+    return { ox: cx - ix, oy: cy - iy };
   }
   function drawBurst(ctx, b) {
     b.life--;
@@ -365,11 +368,13 @@
     ctx.font = `36px ${FONT}`;
     const r = Math.max(56, ctx.measureText(b.word).width * 0.72), R = r * 1.15;
     if (!b.at) b.at = placeBurst(b, R);
-    const { cx, cy, ix, iy } = b.at;
+    const [ix, iy] = w2s(b.x, b.y);
+    const cx = Math.max(R + 8, Math.min(SW - R - 8, ix + b.at.ox));
+    const cy = Math.max(120 + R * 0.72, Math.min(SH - 90 - R * 0.72, iy + b.at.oy));
     ctx.globalAlpha = Math.max(0, Math.min(1, b.life / 15));
     // speed lines from the burst towards the impact, stopping short of it
     const dx = ix - cx, dy = iy - cy, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
-    const from = R * 0.95, to = d - Math.max(55, b.r * Z * 1.6 + 18);
+    const from = R * 0.95, to = d - Math.max(55, b.r * S.cam.z * 1.6 + 18);
     if (to > from + 8) {
       ctx.strokeStyle = "#111"; ctx.lineCap = "round";
       [-14, 0, 14].forEach((off, i) => {
@@ -407,13 +412,36 @@
   const playerAlive = (slot) => S.st.sq.some((q, i) => S.names[i].p === slot && !q.dead);
 
   // ---------------------------------------------------------------- HUD
+  // One compact panel per player, alternating down the left and right sides.
   function buildTeams() {
-    const box = document.getElementById("sq-teams");
-    box.innerHTML = S.players.map((p) => `
+    const side = (k) => S.players.filter((p) => p.slot % 2 === k).map((p) => `
       <div class="sq-team" id="sq-team${p.slot}" style="--c:${p.color}">
-        <div class="tn"><i></i>${esc(p.name)}${p.slot === S.me ? "<small>YOU</small>" : ""}</div>
+        <div class="tn"><canvas width="68" height="68" data-slot="${p.slot}" title="${esc(A.TOYS[A.toyFor(p.slot)].name)}"></canvas><span>${esc(p.name)}</span>${p.slot === S.me ? "<small>YOU</small>" : ""}</div>
         ${S.names.map((n, i) => n.p === p.slot ? `<div class="sq-row" id="sq-row${i}"><span class="n">${esc(n.name)}</span><span class="bar"><b></b></span><span class="hp"></span></div>` : "").join("")}
       </div>`).join("");
+    document.getElementById("sq-side-l").innerHTML = side(0);
+    document.getElementById("sq-side-r").innerHTML = side(1);
+    document.querySelectorAll(".sq-team canvas").forEach((cv) => {
+      const slot = +cv.dataset.slot;
+      A.drawToyHead(cv, A.toyFor(slot), S.players[slot].color);
+    });
+    S.panelRects = null;
+  }
+
+  // Where the panels sit, in canvas px, so edge arrows can step around them.
+  function panelRects() {
+    if (S.panelRects) return S.panelRects;
+    const hud = document.getElementById("sq-hud");
+    S.panelRects = ["sq-side-l", "sq-side-r"].map((id) => {
+      const e = document.getElementById(id);
+      return { x0: e.offsetLeft, x1: e.offsetLeft + e.offsetWidth, y0: e.offsetTop, y1: e.offsetTop + e.offsetHeight };
+    }).filter((r) => r.y1 > r.y0 && hud);
+    return S.panelRects;
+  }
+
+  function fitHud() {
+    const stage = document.getElementById("sq-stage");
+    if (stage) document.getElementById("sq-hud").style.setProperty("--k", stage.clientWidth / SW);
   }
 
   function renderHud() {
@@ -444,6 +472,8 @@
     $("sq-steps-label").textContent = `👣 STEPS ${Math.ceil(st.steps)}`;
     $("sq-steps-bar").style.width = (st.steps / R.MAX_STEPS) * 100 + "%";
     $("sq-end").style.display = myTurn() ? "" : "none";
+    $("sq-keys").style.display = myTurn() ? "block" : "none";
+    S.panelRects = null;
     const cur = S.players[st.cur];
     const msg = st.ph === "loading" ? "Waiting for everyone to load…"
       : st.ph === "aim" ? (st.cur === S.me ? "Your turn — everyone is watching" : `${cur.name} is aiming…`)
@@ -492,6 +522,12 @@
     if (!S || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault();
     S.keys[e.code] = true;
+    // the camera is yours on every turn
+    if (!e.repeat && !e.metaKey && !e.ctrlKey) {
+      if (e.code === "KeyZ") toggleOverview();
+      if (e.code === "Minus" || e.code === "NumpadSubtract") setZoom(S.cam.zoom - 0.3);
+      if (e.code === "Equal" || e.code === "NumpadAdd") setZoom(S.cam.zoom + 0.3);
+    }
     if (!myTurn()) return;
     if (e.code === "Space" && !e.repeat) send({ t: "jump" });
     if (e.code === "Enter" && !e.repeat) send({ t: "end" });
@@ -530,24 +566,33 @@
     const a = currentAim();
     S.drag = null;
     if (!a || !myTurn()) return;
-    if (a.len >= R.MIN_DRAG) send({ t: "fire", ang: a.ang, pow: a.pow });
+    if (a.len >= R.MIN_DRAG) { send({ t: "fire", ang: a.ang, pow: a.pow }); S.fired = true; }
     else send({ t: "aim", ang: a.ang, pow: 0 });
   }
 
   // ---------------------------------------------------------------- render
   function render() {
-    const ctx = S.ctx, st = S.st, T = S.terrain;
+    const ctx = S.ctx, st = S.st, T = S.terrain, cam = S.cam;
     S.frame++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(T.bg, 0, 0, SW, SH);
-    if (!st) { S.raf = requestAnimationFrame(render); return; }
+    if (!st) { ctx.drawImage(T.bg, 0, 0, SW, SH); S.raf = requestAnimationFrame(render); return; }
 
     // drawn positions ease towards the server's
     st.sq.forEach((q, i) => { const d = S.disp[i]; d.x += (q.x - d.x) * 0.4; d.y += (q.y - d.y) * 0.4; });
     if (st.shot && S.shotDisp) { S.shotDisp.x += (st.shot.x - S.shotDisp.x) * 0.5; S.shotDisp.y += (st.shot.y - S.shotDisp.y) * 0.5; }
+    // blinks and twitches, now and then, for each squirrel on this laptop
+    st.sq.forEach((q, i) => {
+      const f = S.fx[i] || (S.fx[i] = { blink: 0, twitch: 0 });
+      if (Math.random() < 0.006) f.blink = 8; else if (f.blink > 0) f.blink--;
+      if (Math.random() < 0.02) f.twitch = 8; else if (f.twitch > 0) f.twitch--;
+    });
+    updateCam();
+
+    // parallax sky: moves at a twentieth of the ground
+    ctx.drawImage(T.bg, -60 - (cam.x - W / 2) * 0.05, -40 - (cam.y - H / 2) * 0.05, SW + 120, SH + 80);
 
     const sh = S.shake > 0.5 ? S.shake : 0;
-    ctx.setTransform(Z, 0, 0, Z, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+    ctx.setTransform(cam.z, 0, 0, cam.z, SW / 2 - cam.x * cam.z + (Math.random() - 0.5) * sh, SH / 2 - cam.y * cam.z + (Math.random() - 0.5) * sh);
     ctx.drawImage(T.deco, 0, 0);
     ctx.drawImage(T.t, 0, 0);
 
@@ -564,14 +609,13 @@
 
     st.sq.forEach((q, i) => {
       if (q.drowned) return;
-      const d = S.disp[i], color = S.players[S.names[i].p].color;
-      ctx.save(); ctx.translate(d.x, d.y); ctx.scale(SIZE * 1.25, SIZE * 1.25);
-      if (q.dead) drawGrave(ctx, color);
-      else {
-        const bob = i === st.act && st.ph !== "over" ? Math.sin(S.frame / 6) * 0.8 : 0;
-        ctx.translate(0, bob);
-        drawSquirrel(ctx, color, q.face, S.frame + i * 17, (S.frame + i * 37) % 220 < 7);
-      }
+      const d = S.disp[i], slot = S.names[i].p, color = S.players[slot].color, f = S.fx[i];
+      ctx.save(); ctx.translate(d.x, d.y); ctx.scale(SIZE, SIZE);
+      if (q.dead) A.drawGrave(ctx, color);
+      else A.drawToy(ctx, A.toyFor(slot), {
+        color, face: q.face, t: S.frame + i * 17, blink: f.blink > 0, twitch: f.twitch > 0,
+        bob: i === st.act && st.ph !== "over" ? Math.sin(S.frame / 6) * 0.8 : 0,
+      });
       ctx.restore();
     });
 
@@ -579,7 +623,7 @@
       const p = S.shotDisp;
       if (S.frame % 2 === 0) S.particles.push({ x: p.x, y: p.y, vx: 0, vy: -0.3, life: 30, color: "rgba(220,220,230,.5)", size: 3, g: 0, smoke: true });
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(st.shot.vy, st.shot.vx)); ctx.scale(1.4, 1.4);
-      ctx.strokeStyle = "rgba(48,24,8,.9)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 1.4;
       ell(ctx, 1, 0, 7, 5); ctx.fillStyle = "#a0612e"; ctx.fill(); ctx.stroke();
       ell(ctx, -5, 0, 3, 6); ctx.fillStyle = "#5e3a1a"; ctx.fill(); ctx.stroke();
       ctx.restore();
@@ -604,74 +648,143 @@
     for (let x = -60; x <= W + 60; x += 16) ctx.lineTo(x, WATER + Math.sin(x * 0.03 + t) * 4);
     ctx.stroke();
 
-    // screen space: name tags and popups
+    // screen space: name tags, edge arrows and popups
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.textAlign = "center";
+    const arrows = [];
     st.sq.forEach((q, i) => {
       if (q.drowned) return;
       const d = S.disp[i], color = S.players[S.names[i].p].color;
-      const x = d.x * Z, y = (d.y - 74 * SIZE) * Z;
-      ctx.font = `15px ${FONT}`;
-      const label = q.dead ? S.names[i].name : `${S.names[i].name} ${q.hp}`, lw = ctx.measureText(label).width + 14;
-      // a comic caption box: cream, black border, hard shadow
-      ctx.fillStyle = "#111"; ctx.fillRect(x - lw / 2 + 3, y - 17 + 3, lw, 20);
-      ctx.fillStyle = q.dead ? "#d8d2c0" : "#fffbe8"; ctx.fillRect(x - lw / 2, y - 17, lw, 20);
-      ctx.lineWidth = 2; ctx.strokeStyle = "#111"; ctx.strokeRect(x - lw / 2, y - 17, lw, 20);
-      ctx.fillStyle = color; ctx.fillRect(x - lw / 2, y + 1, lw, 2);
-      ctx.fillStyle = "#111"; ctx.fillText(label, x, y - 1.5);
-      if (i === st.act && (st.ph === "aim" || st.ph === "banner")) {
-        const by = y - 24 + Math.sin(S.frame / 8) * 4;
-        ctx.beginPath(); ctx.moveTo(x - 10, by - 13); ctx.lineTo(x + 10, by - 13); ctx.lineTo(x, by); ctx.closePath();
-        ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 2.5; ctx.stroke();
-      }
+      const [x, y] = w2s(d.x, d.y - 66 * SIZE);
+      const [, fy] = w2s(d.x, d.y);
+      const onScreen = x > 0 && x < SW && fy > 0 && y < SH;
+      if (onScreen) drawTag(ctx, q, i, x, y, color, st);
+      else if (!q.dead) arrows.push(edgeArrow(S.names[i].name, x, (y + fy) / 2, color));
     });
+    spreadArrows(arrows).forEach((a) => drawEdgeArrow(ctx, a));
     S.bursts.forEach((b) => drawBurst(ctx, b));
     S.bursts = S.bursts.filter((b) => b.life > 0);
     S.popups.forEach((p) => {
-      p.y -= 0.5; p.life--;
+      p.y -= 0.5 / cam.z; p.life--;
       const grow = p.life > 80 ? 1 + (p.life - 80) / 20 : 1;     // pops in big, then settles
+      const [x, y] = w2s(p.x, p.y);
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 30));
       ctx.font = `${Math.round(p.size * 1.6 * grow)}px ${FONT}`;
       ctx.lineJoin = "round";
-      ctx.fillStyle = "#111"; ctx.fillText(p.text, p.x * Z + 3, p.y * Z + 3);
-      ctx.lineWidth = 6; ctx.strokeStyle = "#111"; ctx.strokeText(p.text, p.x * Z, p.y * Z);
-      ctx.fillStyle = p.text[0] === "-" ? "#f7c948" : p.color; ctx.fillText(p.text, p.x * Z, p.y * Z);
+      ctx.fillStyle = "#111"; ctx.fillText(p.text, x + 3, y + 3);
+      ctx.lineWidth = 6; ctx.strokeStyle = "#111"; ctx.strokeText(p.text, x, y);
+      ctx.fillStyle = p.text[0] === "-" ? "#f7c948" : p.color; ctx.fillText(p.text, x, y);
     });
     ctx.globalAlpha = 1;
     S.popups = S.popups.filter((p) => p.life > 0);
 
-    if (myTurn() && !S.drag && act) {
+    // the coach hint, until you've fired once this match
+    if (myTurn() && !S.drag && act && !S.fired) {
       const hint = "Drag back to aim · let go to fire";
       ctx.font = `18px ${FONT}`;
       const hw = ctx.measureText(hint).width + 24;
-      const x = Math.max(hw / 2 + 8, Math.min(SW - hw / 2 - 8, actD.x * Z));
+      const [ax, ay] = w2s(actD.x, actD.y - 66 * SIZE), [, fy] = w2s(actD.x, actD.y);
+      const x = Math.max(hw / 2 + 8, Math.min(SW - hw / 2 - 8, ax));
       // above the squirrel, or below it when the HUD is in the way
-      let y = (actD.y - 74 * SIZE) * Z - 64;
-      if (y < 80) y = actD.y * Z + 26;
+      let y = ay - 64;
+      if (y < 90) y = fy + 26;
       ctx.fillStyle = "#111"; ctx.fillRect(x - hw / 2 + 3, y + 3, hw, 28);
       ctx.fillStyle = "#f7c948"; ctx.fillRect(x - hw / 2, y, hw, 28);
       ctx.lineWidth = 2.5; ctx.strokeStyle = "#111"; ctx.strokeRect(x - hw / 2, y, hw, 28);
       ctx.fillStyle = "#111"; ctx.fillText(hint, x, y + 21);
     }
 
+    document.getElementById("sq-overview").classList.toggle("on", cam.overview);
     S.shake *= 0.85;
     S.raf = requestAnimationFrame(render);
   }
 
+  // A comic caption box with the name and health, and the bouncing arrow over
+  // the squirrel whose turn it is.
+  function drawTag(ctx, q, i, x, y, color, st) {
+    ctx.font = `15px ${FONT}`;
+    const label = q.dead ? S.names[i].name : `${S.names[i].name} ${q.hp}`, lw = ctx.measureText(label).width + 14;
+    ctx.fillStyle = "#111"; ctx.fillRect(x - lw / 2 + 3, y - 17 + 3, lw, 20);
+    ctx.fillStyle = q.dead ? "#d8d2c0" : "#fffbe8"; ctx.fillRect(x - lw / 2, y - 17, lw, 20);
+    ctx.lineWidth = 2; ctx.strokeStyle = "#111"; ctx.strokeRect(x - lw / 2, y - 17, lw, 20);
+    ctx.fillStyle = color; ctx.fillRect(x - lw / 2, y + 1, lw, 2);
+    ctx.fillStyle = "#111"; ctx.fillText(label, x, y - 1.5);
+    if (i === st.act && (st.ph === "aim" || st.ph === "banner")) {
+      const by = y - 24 + Math.sin(S.frame / 8) * 4;
+      ctx.beginPath(); ctx.moveTo(x - 10, by - 13); ctx.lineTo(x + 10, by - 13); ctx.lineTo(x, by); ctx.closePath();
+      ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 2.5; ctx.stroke();
+    }
+  }
+
+  // An arrow at the edge of the screen pointing at a squirrel out of view, in
+  // its player's colour with its name. Side arrows line up down the edge below
+  // the player panels (a second column when one is full); arrows for squirrels
+  // above or below line up along the top or bottom, clear of the HUD.
+  const AM = 26, AGAP = 36;
+  function edgeArrow(name, x, y, color) {
+    const edge = x < 0 ? "l" : x > SW ? "r" : y < SH / 2 ? "t" : "b";
+    return { name, x, y, color, edge, cx: Math.max(AM, Math.min(SW - AM, x)), cy: Math.max(100, Math.min(SH - 70, y)) };
+  }
+  function pullUp(col, i, yMax) {
+    col[i].cy = Math.min(col[i].cy, i === col.length - 1 ? yMax : col[i + 1].cy - AGAP);
+  }
+  function spreadArrows(list) {
+    const rects = panelRects(), left = rects.find((r) => r.x0 < SW / 2), right = rects.find((r) => r.x0 >= SW / 2);
+    const below = (r) => (r ? r.y1 + 24 : 100), yMax = SH - 70;
+    for (const edge of ["l", "r"]) {
+      const yMin = below(edge === "l" ? left : right), cap = Math.max(1, Math.floor((yMax - yMin) / AGAP) + 1);
+      const side = list.filter((a) => a.edge === edge).sort((a, b) => a.y - b.y);
+      for (let c = 0; c * cap < side.length; c++) {
+        const col = side.slice(c * cap, (c + 1) * cap);
+        // as near each target's height as they fit, AGAP apart
+        col.forEach((a, i) => { a.cy = Math.max(yMin, Math.min(yMax, a.y)); if (i) a.cy = Math.max(a.cy, col[i - 1].cy + AGAP); });
+        for (let i = col.length - 1; i >= 0; i--) pullUp(col, i, yMax);
+        col.forEach((a) => { a.cx = edge === "l" ? AM + c * 130 : SW - AM - c * 130; });
+      }
+    }
+    // along the top, between the panels; along the bottom, above the weapon line
+    const x0 = left ? left.x1 + AM + 10 : AM, x1 = right ? right.x0 - AM - 10 : SW - AM;
+    for (const edge of ["t", "b"]) {
+      let next = -Infinity;
+      list.filter((a) => a.edge === edge).sort((a, b) => a.x - b.x).forEach((a) => {
+        a.cx = Math.max(next, Math.max(x0, Math.min(x1, a.x)));
+        a.cy = edge === "t" ? 112 : yMax - 20;
+        next = a.cx + 96;
+      });
+    }
+    return list;
+  }
+  function drawEdgeArrow(ctx, { name, x, y, cx, cy, color, edge }) {
+    const a = Math.atan2(y - cy, x - cx);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+    ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-8, -12); ctx.lineTo(-3, 0); ctx.lineTo(-8, 12); ctx.closePath();
+    ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "#111";
+    ctx.fillStyle = "#111"; ctx.translate(2, 2); ctx.fill(); ctx.translate(-2, -2);
+    ctx.fillStyle = color; ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.font = `15px ${FONT}`;
+    const tw = ctx.measureText(name).width + 10;
+    const off = { l: [tw / 2 + 16, 5], r: [-tw / 2 - 16, 5], t: [0, 32], b: [0, -18] }[edge];
+    const tx = Math.max(tw / 2 + 4, Math.min(SW - tw / 2 - 4, cx + off[0])), ty = cy + off[1];
+    ctx.fillStyle = "#111"; ctx.fillRect(tx - tw / 2, ty - 14, tw, 18);
+    ctx.fillStyle = color; ctx.fillText(name, tx, ty);
+  }
+
   // The slingshot band, the first part of the path (no wind) and the power bar.
   function drawAim(ctx, s, aim) {
-    const w = R.WEAPONS.bazooka, sp = 3 + aim.pow * w.speed, ang = aim.ang;
-    const hx = s.x, hy = s.y - 24, back = (aim.pow * R.POWER_DRAG * 0.3) / Z;
-    ctx.strokeStyle = "rgba(160,100,50,.95)"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(hx - 6, hy - 6); ctx.lineTo(hx - Math.cos(ang) * back, hy - Math.sin(ang) * back); ctx.lineTo(hx + 6, hy + 6); ctx.stroke();
+    const w = R.WEAPONS.bazooka, sp = 3 + aim.pow * w.speed, ang = aim.ang, z = S.cam.z;
+    const hx = s.x, hy = s.y - 24, back = (aim.pow * R.POWER_DRAG * 0.3) / z;
+    const k = Math.max(1, 1.2 / z);                // stays readable when zoomed out
+    ctx.strokeStyle = "rgba(160,100,50,.95)"; ctx.lineWidth = 2.5 * k;
+    ctx.beginPath(); ctx.moveTo(hx - 5, hy - 5); ctx.lineTo(hx - Math.cos(ang) * back, hy - Math.sin(ang) * back); ctx.lineTo(hx + 5, hy + 5); ctx.stroke();
     let px = hx + Math.cos(ang) * 16, py = hy + Math.sin(ang) * 16, vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
     for (let i = 0; i < 26; i++) {
       vy += G; px += vx; py += vy;
       if (i % 2) continue;
-      ctx.fillStyle = `rgba(255,255,255,${0.9 - i / 30})`; ctx.beginPath(); ctx.arc(px, py, (2.6 - i / 14) * 1.6, 0, 7); ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${0.9 - i / 30})`; ctx.beginPath(); ctx.arc(px, py, (2.6 - i / 14) * k, 0, 7); ctx.fill();
     }
-    ctx.fillStyle = "rgba(0,0,0,.6)"; rr(ctx, hx - 30, hy + 40, 60, 10, 5); ctx.fill();
-    ctx.fillStyle = aim.pow > 0.85 ? "#e94560" : "#f7c948"; rr(ctx, hx - 28, hy + 42, 56 * aim.pow, 6, 3); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.6)"; rr(ctx, hx - 24 * k, hy + 30, 48 * k, 8 * k, 4); ctx.fill();
+    ctx.fillStyle = aim.pow > 0.85 ? "#e94560" : "#f7c948"; rr(ctx, hx - 22 * k, hy + 30 + 1.5 * k, 44 * k * aim.pow, 5 * k, 2.5); ctx.fill();
   }
 
   // ---------------------------------------------------------------- entry points
@@ -683,8 +796,9 @@
     S = {
       socket, room, myName: sessionStorage.getItem("myName"), page, cv, ctx: cv.getContext("2d"),
       terrain: buildTerrain(), carved: 0, syncing: false, players: null, names: null, me: -1,
-      st: null, disp: [], shotDisp: null, particles: [], popups: [], bursts: [], shake: 0, frame: 0,
-      keys: {}, dir: 0, drag: null, aimSent: 0, raf: 0,
+      st: null, disp: [], fx: [], shotDisp: null, particles: [], popups: [], bursts: [], shake: 0, frame: 0,
+      keys: {}, dir: 0, drag: null, aimSent: 0, raf: 0, fired: false, focus: null, panelRects: null,
+      cam: { x: W / 2, y: H / 2, z: ZMIN, zoom: ZSTART, overview: false },
     };
     S.handlers = {
       init: onInit, state: onState, over: onOver,
@@ -692,6 +806,7 @@
       end: () => { if (myTurn()) send({ t: "end" }); },
       disconnect: () => setReconnecting(true),
       connect: () => setReconnecting(false),
+      wheel: (e) => { e.preventDefault(); setZoom(S.cam.zoom - e.deltaY * 0.0015); },
     };
     socket.on("squirrels-init", S.handlers.init);
     socket.on("squirrels-state", S.handlers.state);
@@ -705,6 +820,13 @@
     cv.addEventListener("pointermove", onPointerMove);
     cv.addEventListener("pointerup", onPointerUp);
     cv.addEventListener("pointercancel", () => { if (S) S.drag = null; });
+    cv.addEventListener("wheel", S.handlers.wheel, { passive: false });
+    document.getElementById("sq-zoom-in").addEventListener("click", () => setZoom(S.cam.zoom + 0.3));
+    document.getElementById("sq-zoom-out").addEventListener("click", () => setZoom(S.cam.zoom - 0.3));
+    document.getElementById("sq-overview").addEventListener("click", toggleOverview);
+    S.resize = new ResizeObserver(fitHud);
+    S.resize.observe(document.getElementById("sq-stage"));
+    fitHud();
     document.getElementById("sq-end").addEventListener("click", S.handlers.end);
     if (document.fonts && document.fonts.load) document.fonts.load(`40px Bangers`).catch(() => {});
     send({ t: "hello" });
@@ -714,6 +836,7 @@
   window.cleanupSquirrelsClient = function () {
     if (!S) return;
     cancelAnimationFrame(S.raf);
+    if (S.resize) S.resize.disconnect();
     clearTimeout(bannerTimer);
     S.socket.off("squirrels-init", S.handlers.init);
     S.socket.off("squirrels-state", S.handlers.state);
