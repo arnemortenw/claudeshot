@@ -47,6 +47,19 @@
       if (dist < r + 6) { d[i] *= 0.72; d[i + 1] *= 0.68; d[i + 2] *= 0.66; }
     }
     T.tc.putImageData(T.img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    if (T.ink) M.inkOf(T);
+  }
+
+  // ARK Nyåpning: the sign is the enemy. It says something at the start of
+  // every turn and when it's hit; the lines are picked by turn and crater
+  // number, so every laptop shows the same one.
+  function arkSay(text, ms) { S.arkSay = { text, until: performance.now() + ms }; }
+  const arkLeft = () => Math.round((100 * M.arkSignPx(S.terrain.mask)) / (S.arkSign0 || 1));
+  function arkHit(e) {
+    const [x0, y0, x1, y1] = R.ARK.sign.map((v) => v * K);
+    if (e.x < x0 - e.r || e.x > x1 + e.r || e.y < y0 - e.r || e.y > y1 + e.r) return;
+    arkSay(R.ARK.ouch[e.i % R.ARK.ouch.length], 3000);
+    S.popups.push({ x: R.ARK.logo[0] * K, y: (R.ARK.sign[1] - 6) * K, text: `ARK sign: ${arkLeft()}% left`, color: "#ff6a13", size: 14, life: 140 });
   }
 
   // ---------------------------------------------------------------- camera
@@ -202,6 +215,7 @@
       S.map = R.MAPS[data.map] ? data.map : "oak";
       S.hz = R.hazardOf(S.map);
       S.carved = 0;
+      S.arkSign0 = S.map === "ark" ? M.arkSignPx(S.terrain.mask) : 0;
     }
     S.players = data.players;
     S.names = data.names;
@@ -237,6 +251,7 @@
     });
     if (prevTurn !== st.turnNo || st.ph !== "aim") S.drag = null;
     if (prevTurn !== st.turnNo) S.focus = null;
+    if (prevTurn !== st.turnNo && S.map === "ark" && st.ph !== "over") arkSay(R.ARK.taunts[(st.turnNo || 0) % R.ARK.taunts.length], 3200);
     if (!myTurn() && S.dir) S.dir = 0;
     renderHud();
   }
@@ -245,6 +260,7 @@
     if (e.k === "crater" || e.k === "splash") S.focus = [e.x, e.k === "crater" ? e.y : WATER - 40];
     if (e.k === "crater") {
       if (e.i === S.carved) { carve(e); S.carved++; }
+      if (S.map === "ark") arkHit(e);
       boomParticles(e.x, e.y, e.r);
       S.shake = Math.min(18, 6 + e.r / 4);
       addBurst(e.x, e.y, pickWord(BOOM_WORDS), "#f7c948", "#e94560", e.r);
@@ -365,6 +381,7 @@
   }
 
   function onOver(over) {
+    if (S.map === "ark") over = { ...over, ark: arkLeft() };
     try { sessionStorage.setItem("squirrelsResults", JSON.stringify(over)); } catch (e) { /* private mode */ }
   }
 
@@ -636,9 +653,16 @@
     const sh = S.shake > 0.5 ? S.shake : 0;
     ctx.setTransform(cam.z, 0, 0, cam.z, SW / 2 - cam.x * cam.z + (Math.random() - 0.5) * sh, SH / 2 - cam.y * cam.z + (Math.random() - 0.5) * sh);
     ctx.drawImage(T.deco, 0, 0);
+    if (T.ink) ctx.drawImage(T.ink, 0, 0);
     ctx.drawImage(T.t, 0, 0);
 
     const act = st.act >= 0 ? st.sq[st.act] : null, actD = act ? S.disp[st.act] : null;
+    // ARK Nyåpning: the kid on the sign, the logo's eyes on whoever's turn it is, and what it says
+    if (S.map === "ark") {
+      M.drawArkKid(ctx, T.mask, S.frame);
+      M.drawArkEyes(ctx, T.mask, actD ? actD.x : R.ARK.logo[0] * K, actD ? actD.y - 30 : (R.ARK.logo[1] + 80) * K, S.frame);
+      if (S.arkSay && performance.now() < S.arkSay.until) M.drawArkBubble(ctx, T.mask, S.arkSay.text);
+    }
     // the aim: yours from your drag, anyone else's as the server relays it
     const kind = st.cur >= 0 ? kindOf(st.cur) : "shot";
     if (act && st.ph === "aim") {

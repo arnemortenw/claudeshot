@@ -306,7 +306,7 @@ function renderSquirrelsLobby(room) {
   if (!maps.children.length) {
     maps.innerHTML = SQ.MAP_KEYS.map(k => {
       const m = SQ.MAPS[k], hz = SQ.hazardOf(k);
-      return `<button class="sq-map" data-map="${k}"><canvas width="480" height="256"></canvas>
+      return `<button class="sq-map" data-map="${k}"><canvas width="480" height="256"></canvas>${m.fresh ? '<span class="newtag">NEW</span>' : ""}
         <span class="mname">${escHtml(m.name)}<span class="hz">${hz.icon} ${escHtml(hz.name)}</span></span>
         <span class="mblurb">${escHtml(m.blurb)}</span></button>`;
     }).join("");

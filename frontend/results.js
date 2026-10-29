@@ -80,6 +80,7 @@ const SQUIRRELS_RESULTS_CSS = `
 .sq-results .score-item.me{outline:3px dashed #e94560;outline-offset:3px;}
 .sq-results .score-rank,.sq-results .score-points{color:#111;}
 .sq-results .score-name small{font-family:Nunito,"Segoe UI",sans-serif;letter-spacing:0;color:#444 !important;}
+.sq-results .squirrels-ark{display:inline-block;margin-top:1rem;background:#ff6a13;color:#fff;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:.2rem .7rem 0;font-size:1.3rem;transform:rotate(1.5deg);}
 .sq-results .score-name span{display:inline-block;background:var(--c);color:#111 !important;padding:.05rem .45rem 0;border:2px solid #111;box-shadow:2px 2px 0 #111;transform:rotate(-2deg);margin-bottom:.2rem;}
 `;
 
@@ -102,6 +103,13 @@ function renderSquirrelsBoard(res) {
     line.textContent = "Nobody wins. The nuts win.";
   }
   list.before(line);
+  // ARK Nyåpning: how much of the enemy's sign the match left standing
+  if (typeof res.ark === "number") {
+    const ark = document.createElement("p");
+    ark.className = "squirrels-ark";
+    ark.textContent = res.ark > 0 ? `ARK sign: ${res.ark}% left. Still open.` : "ARK sign: gone. Closed for business!";
+    list.after(ark);
+  }
 
   res.rows.forEach((r) => {
     const li = document.createElement("li");

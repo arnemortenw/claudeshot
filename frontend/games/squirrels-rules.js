@@ -100,6 +100,8 @@
       plop: "sploosh.", words: ["SPLOOSH!", "CANNONBALL!", "SPLASH!"], lines: ["Not the paddling pool!", "glub glub", "Cannonbaaall—"] },
     lava: { name: "The floor is lava", icon: "🔥", fill: "lava", line: "#ffd25a", splash: "#ffb347", burst: "#ff6a1a",
       plop: "tssss.", words: ["TSSSS!", "SIZZLE!", "FWOOSH!"], lines: ["The floor is LAVA!", "Hot hot hot!", "Toasted nut."] },
+    shredder: { name: "Returns shredder", icon: "✂️", fill: "shredder", line: "#ffd400", splash: "#ffffff", burst: "#ffd400",
+      plop: "shred.", words: ["SHRED!", "PULPED!", "RETURNED!"], lines: ["Remaindered!", "−100%!", "Back to the publisher…"] },
   };
 
   // pickups: where each map's Napalm (under cover) and H-Bomb (somewhere hard
@@ -115,6 +117,10 @@
     room: { name: "Kid’s Bedroom", hazard: "lava", order: 2,
       blurb: "Blanket fort, letter blocks, a book tent, the toy box and shelves.",
       pickups: { napalm: [215, 370], hbomb: [1122, 100] } },    // under the blanket fort, on the high shelf
+    ark: { name: "ARK Nyåpning", hazard: "shredder", order: 3, fresh: true,
+      blurb: "Sale tables, −40% signs, the 10-kroner shelf, balloon columns and the ARK sign itself.",
+      pickups: { napalm: [210, 515], hbomb: [735, 60] },        // under the left sale table, on top of the ARK logo
+      noSpawn: [[0, 80], [470, 780], [1120, 1200]] },            // nobody starts on the balloons or the sign
   };
   const MAP_KEYS = Object.keys(MAPS);
   const hazardOf = (mapKey) => HAZARDS[(MAPS[mapKey] || MAPS.oak).hazard];
@@ -387,11 +393,84 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- ARK Nyåpning
+  // The ARK bookstore on opening day, and its sign is the enemy. The floor has
+  // two holes down to the returns shredder.
+  const ARK = {
+    floor: 548,
+    gaps: [[400, 470], [800, 860]],
+    sign: [466, 88, 772, 172],              // x0, y0, x1, y1 of the sign and its logo
+    logo: [735, 136, 34],                   // the orange logo: x, y, radius
+    kid: { x: 662, stream: [710, 120] },    // the kid on top of the K, and where his stream lands
+    boards: [[150, 300, 120], [870, 316, 120]],
+    taunts: ["Somebody get that kid off my sign!", "HELE BUTIKKEN −40%!", "Used books? How… quaint.", "Have you got our loyalty card?", "Nyåpning! Again!", "Squirrels don’t read."],
+    ouch: ["AU! Full price for that!", "No refunds!", "That’s coming out of your wages!", "I’m calling security!"],
+  };
+  // The letters A, R and K as block shapes: [op, kind, data]. Shared by the
+  // mask and the art, so the sign looks exactly like what it is.
+  function arkLetters() {
+    return [
+      ["add", "poly", [[482, 162], [506, 96], [530, 96], [554, 162], [533, 162], [528, 148], [508, 148], [503, 162]]],
+      ["cut", "poly", [[512, 134], [524, 134], [518, 114]]],
+      ["add", "rect", [558, 96, 20, 66]],
+      ["add", "round", [558, 96, 60, 42, 18]],
+      ["cut", "round", [578, 110, 22, 14, 6]],
+      ["add", "poly", [[588, 134], [610, 134], [632, 162], [607, 162]]],
+      ["add", "rect", [636, 96, 20, 66]],
+      ["add", "poly", [[656, 122], [682, 96], [706, 96], [670, 132]]],
+      ["add", "poly", [[662, 126], [682, 118], [708, 162], [684, 162]]],
+    ];
+  }
+  // The books stacked on the tables and in the shelf: [x, y, w, h, colour].
+  function arkBooks() {
+    const r = mulberry(21), out = [];
+    const stack = (x, base, cols) => { let y = base; for (const col of cols) { const h = 6 + r() * 5, w = 34 + r() * 10; out.push([x + (r() - 0.5) * 4, y - h, w, h, col]); y -= h; } };
+    stack(104, 440, ["#c0392b", "#f5f5f5", "#c0392b", "#f5f5f5"]);
+    stack(152, 440, ["#e84393", "#e84393", "#fd79a8", "#e84393", "#fd79a8"]);
+    stack(204, 440, ["#2d3436", "#c0392b", "#2d3436"]);
+    stack(254, 440, ["#fff", "#0984e3", "#fff", "#0984e3", "#fff", "#0984e3"]);
+    for (const [x, y] of [[560, 330], [640, 330], [600, 410], [660, 490]]) stack(x, y, ["#2a6fb0", "#f1c40f", "#16a085"]);
+    stack(884, 456, ["#d63031", "#fff", "#d63031", "#fff", "#d63031"]);
+    stack(936, 456, ["#6c5ce7", "#a29bfe", "#6c5ce7"]);
+    stack(990, 456, ["#00b894", "#55efc4", "#00b894", "#55efc4"]);
+    return out;
+  }
+  // Balloons in the two columns: [x, y].
+  function arkBalloons() {
+    const out = [];
+    for (const bx of [40, 1160]) for (let i = 0, y = 486; y > 130; i++, y -= 30) out.push([bx + (i % 2 ? 8 : -8), y]);
+    return out;
+  }
+  function arkShapes() {
+    const out = [], add = (sh) => out.push(["add", sh]);
+    let x0 = 0;
+    for (const [a, b] of [...ARK.gaps, [SW, SW]]) { add(rect(x0, ARK.floor, a - x0, SH - ARK.floor + 60)); x0 = b; }   // the floor
+    for (const bx of [40, 1160]) add(shape.roundRect(bx - 30, 504, 60, 44, 4));                                    // balloon bins
+    for (const [x, y] of arkBalloons()) add(shape.ellipse(x, y, 23, 21));
+    add(rect(98, 470, 18, 78)); add(rect(304, 470, 18, 78));                                                     // left sale table
+    add(shape.roundRect(90, 440, 240, 30, 3)); add(rect(90, 470, 240, 30));
+    add(rect(493, 470, 6, 78)); add(rect(480, 542, 32, 6)); add(shape.roundRect(476, 380, 40, 92, 3));           // card spinner
+    add(rect(540, 250, 12, 298)); add(rect(708, 250, 12, 298));                                                  // the 10-kroner shelf
+    for (const y of [250, 330, 410, 490]) add(rect(540, y, 180, 10));
+    add(shape.roundRect(540, 206, 180, 46, 3));
+    add(rect(878, 484, 18, 64)); add(rect(1054, 484, 18, 64));                                                   // right sale table
+    add(shape.roundRect(870, 456, 210, 30, 3)); add(rect(870, 486, 210, 28));
+    for (const [x, y, w, h] of arkBooks()) add(shape.roundRect(x, y, w, h, 1.5));
+    for (const [x, y, w] of ARK.boards) { add(rect(x, y, w, 26)); add(shape.ellipse(x + w + 4, y + 12, 22, 22)); } // the −40% boards
+    add(rect(480, 160, 220, 6));                                                                                 // the ARK sign
+    for (const [op, kind, d] of arkLetters()) out.push([op, kind === "poly" ? shape.poly(d) : kind === "rect" ? rect(...d) : shape.roundRect(...d)]);
+    add(shape.ellipse(ARK.logo[0], ARK.logo[1], ARK.logo[2], ARK.logo[2]));
+    return out;
+  }
+
   const TERRAIN = {
     oak: { ground: oakGround, shapes: oakShapes },
     yard: { ground: yardGround, shapes: yardShapes },
     room: { ground: null, shapes: roomShapes },
+    ark: { ground: null, shapes: arkShapes },
   };
+  // Where nobody starts on a map, in design units: [[x0, x1], ...].
+  const noSpawnOf = (mapKey) => (MAPS[mapKey] || {}).noSpawn || [];
 
   // The solid mask for a map: W*H bytes, row by row. Pixel (x, y) is tested at
   // its centre, in design units.
@@ -462,13 +541,15 @@
   // starts bunched up, and no two squirrels are closer than SPAWN_GAP.
   // Spots in `avoid` ({ x, y }, the map's crates) are kept clear, so nobody
   // starts on a pickup. Returns [{ player, index, x, y }] with player and
-  // index counted from 0.
-  function spawns(mask, players, perPlayer, seed = 1, avoid = []) {
+  // index counted from 0. Columns inside `noSpawn` ([x0, x1] in design units)
+  // are skipped.
+  function spawns(mask, players, perPlayer, seed = 1, avoid = [], noSpawn = []) {
     const rnd = mulberry(seed);
     const n = players * perPlayer;
     const cols = [];
     for (let x = 30; x < W - 30; x += 2) {
       const y = standable(mask, x);
+      if (noSpawn.some(([a, b]) => x >= a * K && x <= b * K)) continue;
       if (y != null && !avoid.some((a) => Math.abs(a.x - x) < PICKUP_REACH + 20 && Math.abs(a.y - y) < 60)) cols.push([x, y]);
     }
     if (!cols.length) throw new Error("no dry ground to spawn on");
@@ -561,5 +642,6 @@
     ORDER, START, ROUND_UNLOCKS, PINE, RETREAT_SECONDS, MELEE_REACH, unlockedFor, lockText, blasterTrace, meleeVictims,
     TOYS, isToy, HAZARDS, MAP_KEYS, hazardOf, yardGround, roomBooks, roomBlocks, roomBricks,
     PICKUPS, pickupsOf, PICKUP_REACH, PICKUP_FALL, FLAME, touchesPickup,
+    ARK, arkLetters, arkBooks, arkBalloons, noSpawnOf,
   };
 });
