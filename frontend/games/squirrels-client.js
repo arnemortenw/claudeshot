@@ -73,8 +73,7 @@
     let tx = W / 2, ty = H / 2, k = 0.07;
     if (!whole) {
       if (S.shotDisp.length) { tx = S.shotDisp[0].x; ty = Math.max(S.shotDisp[0].y, 60); k = 0.12; }
-      else if (st.ph === "settle" && st.rt > 0 && st.act >= 0 && S.disp[st.act]) { tx = S.disp[st.act].x; ty = S.disp[st.act].y + 15; }
-      else if ((st.ph === "settle" || st.ph === "round" || st.ph === "reward") && S.focus) [tx, ty] = S.focus;
+      else if ((st.ph === "flight" || st.ph === "settle" || st.ph === "round" || st.ph === "reward") && S.focus) [tx, ty] = S.focus;
       else if (st.act >= 0 && S.disp[st.act]) { tx = S.disp[st.act].x; ty = S.disp[st.act].y + 15; }
     }
     cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
@@ -395,8 +394,8 @@
 
   const toyName = (key) => (R.TOYS.find((t) => t.key === key) || R.TOYS[0]).name;
   const myTurn = () => S.st && S.st.ph === "aim" && S.st.cur === S.me && S.me >= 0;
-  // walking, jumping and End turn also work in the retreat after your attack
-  const canMove = () => S.st && S.st.cur === S.me && S.me >= 0 && (S.st.ph === "aim" || S.st.rt > 0);
+  // End turn works from the shot on; walking and jumping only in the retreat (after the blast hold)
+  const canMove = () => S.st && S.st.cur === S.me && S.me >= 0 && (S.st.ph === "aim" || S.st.ph === "retreat" || (S.st.fired && (S.st.ph === "flight" || S.st.ph === "settle")));
   const weaponOf = (slot) => (S.st && S.st.wp && S.st.wp[slot]) || "bazooka";
   const kindOf = (slot) => R.WEAPONS[weaponOf(slot)].kind;
   const foundOf = (slot, w) => (S.st.fd && S.st.fd[slot] && S.st.fd[slot][w]) || 0;
@@ -481,7 +480,8 @@
     const msg = st.ph === "loading" ? "Waiting for everyone to load…"
       : run ? (st.cur === S.me ? `🏃 Retreat! ${st.rt} s to get away` : `🏃 ${cur.name} is retreating! ${st.rt} s`)
       : st.ph === "aim" ? (st.cur === S.me ? "Your turn — everyone is watching" : `${cur.name} is aiming…`)
-      : st.ph === "flight" ? "Incoming!" : "";
+      : st.ph === "flight" ? "Incoming!"
+      : st.ph === "settle" && st.fired ? "💥 Watch the impact" : "";
     $("sq-watch").textContent = msg;
     $("sq-watch").classList.toggle("show", !!msg);
     renderTray();

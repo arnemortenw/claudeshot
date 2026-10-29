@@ -22,7 +22,8 @@
 // The Napalm and H-Bomb lie on the map as crates. Any squirrel that touches
 // one takes it for its own player; one that falls into the hazard is lost.
 // Only the player whose turn it is can act. After the attack they have a
-// 5-second retreat: they can still walk, jump and end the turn, nothing else.
+// blast hold (2.5 s, nobody moves), then a 5-second retreat: they can still
+// walk, jump and end the turn, nothing else.
 // Out: "squirrels-init" to one client, "squirrels-state" to the room 30 times
 // a second, and "squirrels-over" with the ranking when the match ends.
 
@@ -176,6 +177,11 @@ class SquirrelsGame {
       return;
     }
     const s = this.active;
+    if (data.t === "end" && this.fired && (this.phase === "flight" || this.phase === "settle")) {
+      this.shots = [];       // End turn during the blast hold: no retreat
+      this.dir = 0;
+      return this.finishTurn();
+    }
     if (this.canMove()) {
       if (data.t === "move") {
         const d = Number(data.dir);
@@ -241,7 +247,7 @@ class SquirrelsGame {
     else if (kind === "beam") this.blast(aim.ang);
     else if (kind === "melee") this.melee(w, aim.x >= s.x ? 1 : -1);
     else if (kind === "strike") this.strike(aim.x);
-    this.retreatT = RETREAT_FRAMES;
+    this.retreatT = 0;
     this.retreatDone = false;
     this.idle = 0;
     this.dir = 0;
@@ -316,17 +322,28 @@ class SquirrelsGame {
 
   // ---------------------------------------------------------------- the retreat
   retreating() {
-    return this.fired && !this.retreatDone && this.retreatT > 0 && !!this.active && !this.active.dead &&
-      (this.phase === "flight" || this.phase === "settle");
+    return this.phase === "retreat";
   }
 
   canMove() {
     return this.phase === "aim" || this.retreating();
   }
 
+  // The hold is over: the shooter gets the retreat if they have steps left.
+  startRetreat() {
+    const s = this.active;
+    if (!s || s.dead || this.steps < 1) return this.finishTurn();
+    this.retreatT = RETREAT_FRAMES;
+    this.retreatDone = false;
+    this.idle = 0;
+    this.dir = 0;
+    this.setPhase("retreat");
+  }
+
   endRetreat() {
     this.retreatDone = true;
     this.dir = 0;
+    this.finishTurn();
   }
 
   // ---------------------------------------------------------------- turns
@@ -510,12 +527,12 @@ class SquirrelsGame {
       this.timeLeft--;
       if (this.timeLeft <= 0) { this.timeLeft = 0; this.endTurn(`${s.name} ${pick(LINES.timeout, this.rnd)}`); }
       else if (s.dead) this.endTurn();
-    } else if (this.fired && !this.retreatDone && (this.phase === "flight" || this.phase === "settle")) {
+    } else if (this.phase === "retreat") {
       this.retreatT--;
       if (this.retreatT <= 0 || !s || s.dead) this.endRetreat();
       else if (this.steps < 1 && s.ground && this.idle > RETREAT_IDLE) {
-        this.endRetreat();
         this.pop(s.x, s.y - 92, "Out of steps", this.players[s.p].color, 14);
+        this.endRetreat();
       }
     }
 
@@ -531,7 +548,10 @@ class SquirrelsGame {
       const still = !this.shots.length && this.squirrels.every((q) => q.drowned || (q.ground && q.vy === 0));
       this.settleT = still ? this.settleT + 1 : 0;
       const decided = this.alivePlayers().length <= 1;
-      if ((this.settleT > SETTLE_FRAMES && (decided || !this.retreating())) || this.phaseT > SETTLE_MAX) this.finishTurn();
+      if (this.settleT > SETTLE_FRAMES || this.phaseT > SETTLE_MAX) {
+        if (decided) this.finishTurn();
+        else this.startRetreat();
+      }
     }
   }
 
