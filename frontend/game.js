@@ -63,6 +63,7 @@ function cleanupAllGames() {
   if (typeof cleanupHexagoneClient === "function") cleanupHexagoneClient();
   if (typeof cleanupBlockpartyClient === "function") cleanupBlockpartyClient();
   if (typeof cleanupTreehutClient === "function") cleanupTreehutClient();
+  if (typeof cleanupSquirrelsClient === "function") cleanupSquirrelsClient();
 }
 
 function initGame(room) {
@@ -78,6 +79,7 @@ function initGame(room) {
   if (room.game === "hexagone") initHexagoneClient(socket, socket.id, room);
   if (room.game === "blockparty") initBlockpartyClient(socket, socket.id, room);
   if (room.game === "treehut") initTreehutClient(socket, socket.id, room);
+  if (room.game === "squirrels") initSquirrelsClient(socket, socket.id, room);
 }
 
 let roundOverlayTimer = null;

@@ -31,10 +31,10 @@ socket.on("game-started", () => {
   window.location.href = "game.html";
 });
 
-const GAME_NAMES = { snake: "🐍 Snake", hungry: "🍗 Hungry Lasse", shooter: "🔫 Shooter", eye: "👁️ Eye of Ark", showdown: "🌀 Jump Showdown", hexagone: "⬡ Hex-A-Gone", blockparty: "🧱 Block Party", treehut: "🐿️ Drey's Treehut" };
+const GAME_NAMES = { snake: "🐍 Snake", hungry: "🍗 Hungry Lasse", shooter: "🔫 Shooter", eye: "👁️ Eye of Ark", showdown: "🌀 Jump Showdown", hexagone: "⬡ Hex-A-Gone", blockparty: "🧱 Block Party", treehut: "🐿️ Drey's Treehut", squirrels: "🐿️ Rabid Squirrels" };
 
 // Games that need more than one player before the host can start.
-const MIN_PLAYERS = { treehut: 2 };
+const MIN_PLAYERS = { treehut: 2, squirrels: 2 };
 
 let gameSettings = {};
 
@@ -65,6 +65,29 @@ function renderGameSettings(game) {
 
   // Drey's Treehut is one 15-minute case per game: no rounds picker.
   if (game === "treehut") gameSettings.rounds = 1;
+
+  // Rabid Squirrels is one match to the last player standing: no rounds picker.
+  if (game === "squirrels") {
+    gameSettings.rounds = 1;
+    gameSettings.squirrels = 2;
+    container.innerHTML = `
+      <div class="round-picker">
+        <label class="label">Squirrels per player</label>
+        <div class="round-btns">
+          ${[2, 3].map(n =>
+            `<button class="round-btn${n === 2 ? " active" : ""}" data-squirrels="${n}">${n}</button>`
+          ).join("")}
+        </div>
+        <p style="font-size:0.78rem;color:#8892a4;margin-top:0.5rem;">Moonlit Oak · 30-second turns · last player standing wins</p>
+      </div>`;
+    container.querySelectorAll(".round-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".round-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        gameSettings.squirrels = parseInt(btn.dataset.squirrels);
+      });
+    });
+  }
 
   if (game === "shooter") {
     gameSettings.rounds = 1;
