@@ -92,6 +92,10 @@ function makeGame(names, opts = {}) {
   check("every object clue is defined", R.ROOMS.every((r) => r.objects.every((o) => !o.clue || R.CLUES[o.clue])));
   check("four map pieces in the Nook", R.ROOMS[1].objects.filter((o) => o.piece !== undefined).length === R.MAP_PIECES);
   check("four suspects", R.SUSPECTS.length === 4);
+  check("only the Pantry has a key cabinet, and it opens after the ledger",
+    R.ROOMS.map((r) => !!r.key).join() === "true,false,false" &&
+    R.findObject(0, R.ROOMS[0].key.cabinet).after === "jars" && R.findObject(0, R.ROOMS[0].key.to).npc);
+  check("the ledger comes after the barrel lock", R.CHALLENGES.jars.after === "barrels" && !R.CHALLENGES.barrels.after);
 
   // no answer, anywhere in the shared file
   const src = fs.readFileSync(path.join(__dirname, "../frontend/games/treehut-rules.js"), "utf8");
@@ -167,8 +171,19 @@ function makeGame(names, opts = {}) {
   g.input("s1", { t: "answer", challenge: "jars", value: "9" });
   g.input("s1", { t: "answer", challenge: "book", value: "NEST" });
   check("wrong answers change nothing", snap() === before);
-  check("a wrong answer is told only to who answered", g.events("treehut-wrong", "s1").length === 2 && g.events("treehut-wrong", "TEST").length === 0);
-  check("an answer for another room does nothing", g.events("treehut-wrong").length === 2 && !g.game.solved.book);
+  check("a wrong answer is told only to who answered", g.events("treehut-wrong", "s1").length === 1 && g.events("treehut-wrong", "TEST").length === 0);
+  check("an answer for another room does nothing", g.events("treehut-wrong").length === 1 && !g.game.solved.book);
+
+  // the ledger waits for the barrel lock
+  g.input("s2", { t: "answer", challenge: "jars", value: "3" });
+  check("a ledger answer before the barrel lock is solved is refused", snap() === before && !g.game.solved.jars && g.score("s2").challenge === 0);
+  check("a refused ledger answer is not called wrong", g.events("treehut-wrong", "s2").length === 0);
+  g.input("s2", { t: "ask-hint", challenge: "jars" });
+  check("no hint asks on the locked ledger", !g.state().hintAsks.jars);
+  check("the ledger shows as locked until the barrel lock is solved", R.locked("jars", g.state().solved) && !R.locked("barrels", g.state().solved));
+  g.inspect("s2", "cabinet");
+  g.inspect("s2", "drey");
+  check("the cabinet stays shut before the ledger", g.state().keyBy === null && g.state().keyGiven === null && !g.state().doorOpen);
 
   // hints: only after an ask, never your own
   g.input("s2", { t: "give-hint", challenge: "barrels" });
@@ -184,18 +199,38 @@ function makeGame(names, opts = {}) {
   g.input("s1", { t: "ask-hint", challenge: "barrels" });
   g.input("s3", { t: "give-hint", challenge: "barrels" });
   check("one hint per challenge", g.score("s3").helping === 0 && g.score("s2").helping === 10);
-  g.input("s2", { t: "ask-hint", challenge: "jars" });
-  g.input("s3", { t: "give-hint", challenge: "jars" });
-  check("an empty hint uses the suggested one", g.state().hints.jars.text === R.CHALLENGES.jars.hint && g.score("s3").helping === 10);
 
   // right answers
   g.input("s1", { t: "answer", challenge: "barrels", value: ["acorn", "leaf", "mushroom"] });
   check("a right answer scores 30 for the solver", g.score("s1").challenge === 30 && g.state().solved.barrels === "p1");
   check("the door stays shut after one of two", !g.state().doorOpen);
+  check("the barrel lock unlocks the ledger", !R.locked("jars", g.state().solved));
   g.input("s2", { t: "answer", challenge: "barrels", value: "acorn,leaf,mushroom" });
   check("a solved challenge can't be solved again", g.score("s2").challenge === 0);
+  g.input("s2", { t: "ask-hint", challenge: "jars" });
+  g.input("s3", { t: "give-hint", challenge: "jars" });
+  check("an empty hint uses the suggested one", g.state().hints.jars.text === R.CHALLENGES.jars.hint && g.score("s3").helping === 10);
+  g.inspect("s2", "cabinet");
+  check("the cabinet stays shut while the ledger is unsolved", g.state().keyBy === null);
   g.input("s3", { t: "answer", challenge: "jars", value: " 3 " });
-  check("the second answer scores 30 and opens the door", g.score("s3").challenge === 30 && g.state().doorOpen);
+  check("the ledger scores 30 but the door stays locked", g.score("s3").challenge === 30 && g.state().solved.jars === "p3" && !g.state().doorOpen);
+
+  // the key cabinet, the key and Drey
+  const s1Before = g.total("s1");
+  g.inspect("s1", "drey");
+  check("Drey has nothing to swap without the key", g.state().keyGiven === null && !g.state().doorOpen);
+  g.inspect("s1", "cabinet");
+  check("the open cabinet gives its key to who takes it", g.state().keyBy === "p1" && !g.state().doorOpen && g.total("s1") === s1Before);
+  g.inspect("s2", "cabinet");
+  check("the key stays with its carrier", g.state().keyBy === "p1");
+  g.inspect("s2", "drey");
+  check("only the carrier can hand Drey the key", g.state().keyGiven === null && !g.state().doorOpen);
+  let walked = true;
+  try { g.throughDoor("s1"); } catch (e) { walked = false; }
+  check("no way through the locked door", !walked);
+  check("the door stays locked until Drey has the key", g.game.roomIdx === 0);
+  g.inspect("s1", "drey");
+  check("giving Drey the key opens the door", g.state().keyGiven === "p1" && g.state().doorOpen);
 
   // the whole party walks through together
   g.throughDoor("s2");
@@ -252,6 +287,20 @@ function makeGame(names, opts = {}) {
   g.input("s1", { t: "rule-out", suspect: "nobody" });
   g.input("s1", { t: "vote", suspect: "nobody" });
   check("unknown suspects are ignored", Object.keys(g.state().ruledOut).length === 0 && Object.keys(g.state().votes).length === 0);
+  g.game.stop();
+}
+
+// ================================================================ key carrier leaves
+{
+  NOW = 3_500_000;
+  const g = makeGame(["Ada", "Bo"]);
+  g.input("s1", { t: "answer", challenge: "barrels", value: "acorn,leaf,mushroom" });
+  g.input("s1", { t: "answer", challenge: "jars", value: "3" });
+  g.inspect("s1", "cabinet");
+  g.room.players.splice(0, 1);           // Ada leaves with the key
+  g.inspect("s2", "cabinet");
+  g.inspect("s2", "drey");
+  check("a key whose carrier left can be taken again", g.state().keyBy === "p2" && g.state().keyGiven === "p2" && g.state().doorOpen);
   g.game.stop();
 }
 
@@ -387,6 +436,8 @@ function vaultGame(names) {
   g.inspect("s1", "b1"); g.inspect("s1", "b2"); g.inspect("s1", "b3");
   g.input("s1", { t: "answer", challenge: "barrels", value: ["acorn", "leaf", "mushroom"] });
   g.input("s2", { t: "answer", challenge: "jars", value: "3" });
+  g.inspect("s3", "cabinet");
+  g.inspect("s3", "drey");
   g.throughDoor("s1");
   ["mp1", "mp2", "mp3", "mp4"].forEach((id) => g.inspect("s1", id));
   [0, 0, 0, 1, 1, 3].forEach((piece) => g.input("s1", { t: "rotate-piece", piece }));

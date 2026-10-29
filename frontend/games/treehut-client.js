@@ -110,6 +110,9 @@ body.th-active #game-area{width:100%;}
   border:1px solid;border-color:var(--edge-lo) var(--edge-hi) var(--edge-hi) var(--edge-lo);}
 .th-ch.done .th-label{color:var(--muted);text-decoration:line-through;}
 .th-ch .by{color:var(--muted);font-size:10px;display:block;}
+.th-ch.locked .th-label{color:var(--muted);}
+.th-ch.locked .box{color:var(--muted);font-size:9px;}
+.th-ch .why{color:#c9a46a;font-size:10px;font-style:italic;display:block;}
 .th-door{margin-top:4px;padding:4px;text-align:center;font-size:11px;background:#1d1c1a;}
 .th-door.open{color:var(--green);}
 .th-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;}
@@ -212,6 +215,10 @@ body.th-active #game-area{width:100%;}
     const byUid = (uid) => S && S.players.find((p) => p.uid === uid);
     const nameOf = (uid) => { const p = byUid(uid); if (!p) return "Someone"; return p.id === s.socket.id ? "You" : p.name; };
     const picked = () => (S ? S.picked : {});
+    // the key from the cabinet: who carries it (if still here), and whether it hangs there
+    const carrier = () => S && !S.keyGiven && S.keyBy && byUid(S.keyBy) && byUid(S.keyBy).here ? S.keyBy : null;
+    const keyInCabinet = () => !S.keyGiven && !carrier();
+    const seenKey = { by: null, given: false };
 
     // ---------------------------------------------------------------- server
     s.listen("treehut-state", (st) => {
@@ -307,6 +314,26 @@ body.th-active #game-area{width:100%;}
         if (!first) {
           logLine("ev", `${nameOf(uid)} solved: ${R.CHALLENGES[cid].name.replace(/[?.!]$/, "")}.`, true);
           floatOver(uid, "+" + R.POINTS.challenge + " challenge", "#f0c040");
+          for (const c of Object.values(R.CHALLENGES)) {
+            if (c.after === cid) logLine("ev", `*click* Next challenge unlocked: ${c.name}`, true);
+          }
+          const cab = R.ROOMS[S.room].objects.find((o) => o.type === "cabinet" && o.after === cid);
+          if (cab) { logLine("ev", "*creak* Drey's key cabinet swings open. There is a key inside!", true); floatAt(cab.x, cab.y, "Open!", "#4ee04e"); }
+        }
+      }
+      if (S.keyBy && S.keyBy !== seenKey.by) {
+        seenKey.by = S.keyBy;
+        if (!first && !S.keyGiven) {
+          logLine("ev", `${nameOf(S.keyBy)} took the key from Drey's cabinet. Bring it to Drey!`, true);
+          floatOver(S.keyBy, "Key!", "#f0c040");
+        }
+      }
+      if (S.keyGiven && !seenKey.given) {
+        seenKey.given = true;
+        const L = R.ROOMS[S.room].dreyKey;
+        if (!first) {
+          logLine("ev", `${nameOf(S.keyGiven)} gave Drey the cabinet key.`, true);
+          if (L) npc(L.given);
         }
       }
     }
@@ -398,10 +425,35 @@ body.th-active #game-area{width:100%;}
 
     // ---------------------------------------------------------------- acting
     function inspect(o) {
-      if (o.look) look(o.look);
-      if (o.npc) { (R.ROOMS[S.room].drey || []).forEach((l, i) => s.later(() => npc(l), i * 900)); return; }
+      const text = lookFor(o);
+      if (text) look(text);
       send("inspect", { id: o.id });
-      if (o.opens) puzzles.open(o.opens);
+      if (o.npc) { dreySays(); return; }
+      if (o.opens) puzzles.open(o.opens, true);
+    }
+
+    function lookFor(o) {
+      if (o.lockedLook && R.locked(o.opens, S.solved)) return o.lockedLook;
+      if (o.type === "cabinet") {
+        const L = R.ROOMS[S.room].cabinetLook;
+        return !S.solved[o.after] ? o.look : keyInCabinet() ? L.full : L.empty;
+      }
+      return o.look;
+    }
+
+    // What Drey says when clicked. In a room with a key he talks about where the key is.
+    function dreySays() {
+      const room = R.ROOMS[S.room], L = room.dreyKey;
+      let said = room.drey || [];
+      if (room.key && L) {
+        const cab = R.findObject(S.room, room.key.cabinet), me = meP();
+        if (S.keyGiven) said = [L.given];
+        else if (me && carrier() === me.uid) said = [];          // the hand-over line comes with the state
+        else if (!S.solved[cab.after]) said = [L.locked];
+        else if (carrier()) said = [L.carried.replace("{name}", nameOf(carrier()))];
+        else said = [L.open];
+      }
+      said.forEach((l, i) => s.later(() => npc(l), i * 900));
     }
 
     function tileFromEvent(e) {
@@ -411,6 +463,10 @@ body.th-active #game-area{width:100%;}
 
     function lockedDoorText() {
       const left = R.ROOMS[S.room].challenges.filter((c) => !S.solved[c]).length;
+      if (!left && R.ROOMS[S.room].key) {
+        return carrier() ? "The door is locked. Bring the cabinet key to Drey: he has the key to the stairs."
+          : "The door is locked. Take the key from Drey's cabinet and bring it to him.";
+      }
       return `The door is locked. Solve ${left} more challenge${left === 1 ? "" : "s"} to open it.`;
     }
 
@@ -528,7 +584,7 @@ body.th-active #game-area{width:100%;}
       $.party.innerHTML = S.players.map((p) => {
         const mine = p.id === s.socket.id;
         return `<div class="th-prow${p.here ? "" : " gone"}" title="${p.here ? "" : "Left the game"}"><span class="dot" style="background:${p.color}"></span>` +
-          `<span class="nm${mine ? " me" : ""}">${esc(p.name)}${mine ? " (you)" : ""}${p.here && !p.entered ? '<span class="rd">reading the briefing</span>' : ""}</span><span class="pts">${p.score.total}</span>` +
+          `<span class="nm${mine ? " me" : ""}">${esc(p.name)}${mine ? " (you)" : ""}${p.here && !p.entered ? '<span class="rd">reading the briefing</span>' : ""}${carrier() === p.uid ? '<span class="rd">🗝 carries the key</span>' : ""}</span><span class="pts">${p.score.total}</span>` +
           `<span class="th-bar">${[["challenge", "ch"], ["clue", "cl"], ["helping", "hp"]].map(([k, v]) =>
             `<i style="width:${p.score[k] / max * 100}%;background:var(--${v})"></i>`).join("")}</span></div>`;
       }).join("");
@@ -537,20 +593,39 @@ body.th-active #game-area{width:100%;}
         const c = R.CHALLENGES[cid], by = S.solved[cid];
         const extra = cid === "map" && !by ? ` (${Object.keys(S.mapPieces).length}/${R.MAP_PIECES} pieces)` : "";
         const asked = !by && S.hintAsks[cid] ? `<span class="ask">${esc(nameOf(S.hintAsks[cid]))} asked for a hint</span>` : "";
-        return `<div class="th-ch${by ? " done" : ""}" data-c="${cid}"><span class="box">${by ? "✓" : ""}</span>` +
-          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(nameOf(by) === "You" ? "you" : nameOf(by))}</span>` : ""}${asked}</span></div>`;
-      }).join("");
-      $.challenges.querySelectorAll(".th-ch").forEach((el) => { el.onclick = () => puzzles.open(el.dataset.c); });
+        const locked = R.locked(cid, S.solved);
+        return `<div class="th-ch${by ? " done" : ""}${locked ? " locked" : ""}" data-c="${cid}"><span class="box">${by ? "✓" : locked ? "🔒" : ""}</span>` +
+          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(you(by))}</span>` : ""}` +
+          `${locked ? `<span class="why">${esc(c.locked)}</span>` : ""}${asked}</span></div>`;
+      }).join("") + keySteps(room);
+      $.challenges.querySelectorAll(".th-ch[data-c]").forEach((el) => { el.onclick = () => puzzles.open(el.dataset.c); });
       if (!R.doorTile(S.room)) {
         $.door.className = "th-door";
         $.door.textContent = S.solved.accuse ? "Case closed" : "Last room: name the thief";
       } else {
         const n = room.challenges.filter((c) => S.solved[c]).length;
         $.door.className = "th-door" + (S.doorOpen ? " open" : "");
-        $.door.textContent = S.doorOpen ? "Door open: walk through it →" : `🔒 Door locked: ${n} of ${room.challenges.length} solved`;
+        $.door.textContent = S.doorOpen ? "Door open: walk through it →"
+          : room.key && n === room.challenges.length ? `🔒 Door locked: ${carrier() ? "bring the key to Drey" : "take the key from the cabinet"}`
+          : `🔒 Door locked: ${n} of ${room.challenges.length} solved`;
       }
 
       renderSlots();
+    }
+
+    function you(uid) { const n = nameOf(uid); return n === "You" ? "you" : n; }
+
+    // The key's two steps after the challenges: take it from the cabinet, bring it to Drey.
+    function keySteps(room) {
+      if (!room.key) return "";
+      const cab = R.findObject(S.room, room.key.cabinet);
+      const row = (label, done, by, why) => `<div class="th-ch${done ? " done" : ""}${why ? " locked" : ""}"><span class="box">${done ? "✓" : why ? "🔒" : ""}</span>` +
+        `<span><span class="th-label">${label}</span>${by ? `<span class="by">${by}</span>` : ""}${why ? `<span class="why">${why}</span>` : ""}</span></div>`;
+      const took = S.keyGiven || carrier();
+      return row("Take the key from the cabinet", !!took, took ? `by ${esc(you(S.keyBy))}` : "",
+          S.solved[cab.after] ? "" : "Opens when the ledger is solved.") +
+        row("Bring the key to Drey", !!S.keyGiven, S.keyGiven ? `by ${esc(you(S.keyGiven))}` : carrier() ? `${esc(nameOf(carrier()))} ${carrier() === (meP() || {}).uid ? "carry" : "carries"} the key` : "",
+          took ? "" : "Take the key first.");
     }
 
     let slotKey = "";
@@ -614,9 +689,10 @@ body.th-active #game-area{width:100%;}
     }
 
     function drawObj(o, t) {
-      A.OBJ_ART[o.type](ctx, o.x * T, o.y * T, o, t);
-      // a sparkle on clues nobody has found yet, and on map pieces still lying there
-      const unfound = (o.clue && !S.clues.some((c) => c.id === o.clue)) || o.piece !== undefined;
+      const cabinet = o.type === "cabinet" ? { ...o, open: !!S.solved[o.after], hasKey: keyInCabinet() } : null;
+      A.OBJ_ART[o.type](ctx, o.x * T, o.y * T, cabinet || o, t);
+      // a sparkle on clues nobody has found yet, on map pieces still lying there and on a key to take
+      const unfound = (o.clue && !S.clues.some((c) => c.id === o.clue)) || o.piece !== undefined || (cabinet && cabinet.open && cabinet.hasKey);
       if (unfound && Math.floor(t / 300 + o.x) % 6 === 0) {
         ctx.fillStyle = "#fff8c0";
         ctx.fillRect(o.x * T + 24, o.y * T + 6, 2, 2); ctx.fillRect(o.x * T + 23, o.y * T + 7, 4, 0.5);
@@ -643,6 +719,7 @@ body.th-active #game-area{width:100%;}
       ctx.textAlign = "left";
       ctx.fillStyle = "#000"; ctx.fillRect(px + 4, py - 5, 26, 4);
       ctx.fillStyle = p.color; ctx.fillRect(px + 5, py - 4, 24, 2);
+      if (carrier() === p.uid) A.drawKey(ctx, px + 25, py + 10 - bob, 1);
       ctx.globalAlpha = 1;
     }
 

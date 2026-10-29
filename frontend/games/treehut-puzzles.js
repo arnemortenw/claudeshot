@@ -10,7 +10,8 @@
 // who answered and only shows that window's failure line.
 //
 // treehut-client.js makes one with TREEHUT_PUZZLES.create(api) and calls
-// open(cid), update(state) and wrong(cid). The case board's window comes from
+// open(cid, quiet), update(state) and wrong(cid). A challenge still waiting for
+// the one before it does not open; unless quiet, it says why instead. The case board's window comes from
 // treehut-case.js as api.caseBoard.
 (function () {
   "use strict";
@@ -109,9 +110,13 @@
     const WINDOWS = { barrels: barrelsWin, jars: jarsWin, book: bookWin, map: mapWin };
     if (api.caseBoard) WINDOWS.accuse = (st) => api.caseBoard(st, close);
 
-    function open(cid) {
+    function open(cid, quiet) {
       const st = S();
       if (!st || st.over || !WINDOWS[cid] || R.CHALLENGES[cid].room !== st.room) return false;
+      if (R.locked(cid, st.solved)) {
+        if (!quiet) api.look("🔒 " + R.CHALLENGES[cid].locked);
+        return false;
+      }
       if (win && win.cid === cid) return true;
       close();
       const el = document.createElement("div");

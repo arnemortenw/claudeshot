@@ -7,7 +7,8 @@
 //
 // Inputs arrive on "treehut-input" as { t, ... }:
 //   move { dir }               one tile step: up, down, left, right
-//   inspect { id }             an object you stand next to
+//   inspect { id }             an object you stand next to; the open key cabinet
+//                              gives you its key; Drey swaps it for the door key
 //   answer { challenge, value } barrels (3 symbols), jars (a number), book (a word), map (no value)
 //   rotate-piece { piece }     turn a found map piece 90 degrees
 //   ask-hint { challenge }     ask the party for a hint
@@ -82,6 +83,8 @@ class TreehutGame {
     this.hints = {};         // challenge -> { by, askedBy, text }
     this.ruledOut = {};      // suspect -> uid
     this.votes = {};         // uid -> suspect
+    this.keyBy = null;       // uid carrying the key from the room's cabinet
+    this.keyGiven = null;    // uid who gave it to Drey, which opens the door
 
     this.startedAt = null;
     this.briefingUntil = null;     // while set, the party is reading the briefing and the clock waits
@@ -198,13 +201,35 @@ class TreehutGame {
     } else if (o.rule !== undefined && this.readRules[o.rule] === undefined) {
       this.readRules[o.rule] = p.uid;
       changed = true;
+    } else {
+      changed = this.handleKey(p, o);
     }
     if (changed) this.broadcast();
   }
 
+  // The open cabinet gives its key to whoever takes it (again, if the carrier
+  // left the game); the carrier hands it to Drey and the door opens.
+  handleKey(p, o) {
+    const key = R.ROOMS[this.roomIdx].key;
+    if (!key || this.keyGiven) return false;
+    if (o.id === key.cabinet) {
+      if (!this.solved[o.after]) return false;
+      const carrier = this.keyBy && [...this.players.values()].find((q) => q.uid === this.keyBy);
+      if (carrier && this.present(carrier)) return false;
+      this.keyBy = p.uid;
+      return true;
+    }
+    if (o.id === key.to && this.keyBy === p.uid) {
+      this.keyGiven = p.uid;
+      this.doorOpen = true;
+      return true;
+    }
+    return false;
+  }
+
   answer(p, cid, value) {
     const c = R.CHALLENGES[cid];
-    if (!c || cid === "accuse" || c.room !== this.roomIdx || this.solved[cid]) return;
+    if (!c || cid === "accuse" || c.room !== this.roomIdx || this.solved[cid] || R.locked(cid, this.solved)) return;
     if (this.isRight(cid, value)) {
       this.solve(cid, p);
       this.broadcast();
@@ -235,7 +260,7 @@ class TreehutGame {
 
   askHint(p, cid) {
     const c = R.CHALLENGES[cid];
-    if (!c || c.room !== this.roomIdx || this.solved[cid] || this.hints[cid] || this.hintAsks[cid]) return;
+    if (!c || c.room !== this.roomIdx || this.solved[cid] || this.hints[cid] || this.hintAsks[cid] || R.locked(cid, this.solved)) return;
     this.hintAsks[cid] = p.uid;
     this.broadcast();
   }
@@ -292,7 +317,7 @@ class TreehutGame {
     this.addScore(p, "challenge", `Solved "${R.CHALLENGES[cid].name}"`);
     for (const [id, clue] of Object.entries(R.CLUES)) if (clue.from === cid) this.gainClue(id, p);
     const here = R.ROOMS[this.roomIdx];
-    if (R.doorTile(this.roomIdx) && here.challenges.every((c) => this.solved[c])) this.doorOpen = true;
+    if (R.doorTile(this.roomIdx) && !here.key && here.challenges.every((c) => this.solved[c])) this.doorOpen = true;
   }
 
   // Whoever steps through the open door takes the whole party along.
@@ -396,6 +421,8 @@ class TreehutGame {
       hintAsks: { ...this.hintAsks },
       hints: JSON.parse(JSON.stringify(this.hints)),
       ruledOut: { ...this.ruledOut },
+      keyBy: this.keyBy,
+      keyGiven: this.keyGiven,
       votes: { ...this.votes },
       over: this.over ? this.over.outcome : null,
     };

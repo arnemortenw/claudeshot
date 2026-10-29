@@ -307,11 +307,40 @@
       c.fillStyle = "#ddd"; c.fillRect(x + 8, y + 18, 4, 1);
       c.fillStyle = "rgba(180,170,150,.5)"; c.fillRect(x + 11, y + 15, 2, 1); c.fillRect(x + 17, y + 17, 2, 1);
     },
+    // o.open / o.hasKey come from the state: shut, open with the key, open and empty
+    cabinet(c, x, y, o) {
+      c.fillStyle = "rgba(0,0,0,.3)"; c.fillRect(x + 5, y + 28, 24, 3);
+      c.fillStyle = "#4e2e12"; c.fillRect(x + 4, y + 2, 24, 27);
+      c.fillStyle = "#2a190c"; c.fillRect(x + 6, y + 4, 20, 23);
+      if (o.open) {
+        c.fillStyle = "#6b411d"; c.fillRect(x + 6, y + 4, 2, 23);
+        c.fillStyle = "#9a9a9a"; c.fillRect(x + 15, y + 8, 2, 2);
+        if (o.hasKey) drawKey(c, x + 12, y + 10, 1);
+        // the door swung open to the right
+        c.fillStyle = "#7b4a22"; c.fillRect(x + 27, y + 3, 4, 25);
+        c.fillStyle = "#93602e"; c.fillRect(x + 28, y + 4, 2, 23);
+      } else {
+        c.fillStyle = "#7b4a22"; c.fillRect(x + 6, y + 4, 20, 23);
+        c.fillStyle = "#93602e"; c.fillRect(x + 8, y + 6, 16, 8); c.fillRect(x + 8, y + 17, 16, 8);
+        c.fillStyle = "#d2a72a"; c.fillRect(x + 21, y + 14, 3, 4);
+        c.fillStyle = "#5a4510"; c.fillRect(x + 22, y + 15, 1, 2);
+      }
+      c.fillStyle = "#5b3517"; c.fillRect(x + 3, y + 1, 26, 3);
+    },
+    key(c, x, y) { drawKey(c, x + 9, y + 9, 1.5); },
     drey(c, x, y, o, t) {
       const bob = Math.floor(t / 400) % 2;
       drawSprite(c, SQUIRREL, PAL_DREY, x, y - bob, 2, true, "#8a6a2a");
     },
   };
+
+  // a brass key, 8x14 at s 1, bit at the bottom
+  function drawKey(c, x, y, s) {
+    const px = (a, b, w, h, col) => { c.fillStyle = col; c.fillRect(x + a * s, y + b * s, w * s, h * s); };
+    px(1, 0, 6, 2, "#d2a72a"); px(0, 1, 2, 4, "#d2a72a"); px(6, 1, 2, 4, "#d2a72a"); px(1, 5, 6, 1, "#d2a72a");
+    px(2, 2, 4, 3, "rgba(0,0,0,.6)"); px(3, 6, 2, 8, "#d2a72a"); px(5, 10, 2, 1, "#d2a72a"); px(5, 12, 2, 1, "#d2a72a");
+    px(1, 0, 2, 1, "#f6dc7a"); px(3, 6, 1, 6, "#f6dc7a");
+  }
 
   // symbols for the barrel lock
   function drawSymbol(c, sym, x, y, s) {
@@ -361,7 +390,7 @@
     T,
     SQUIRREL, FOX, MAGPIE, BADGER, OWL, WEASEL, NUT,
     PAL_SQ, PAL_FOX, PAL_WEASEL, PAL_MAGPIE, PAL_BADGER, PAL_OWL, PAL_DREY, PAL_NUT,
-    drawSprite, drawFloor, drawWall, drawDoor, drawWindow, drawSymbol, drawIcon,
+    drawSprite, drawFloor, drawWall, drawDoor, drawWindow, drawSymbol, drawIcon, drawKey,
     OBJ_ART, SUSPECT_ART,
   };
 })();
