@@ -158,7 +158,7 @@ body {
 <section class="screen on" id="screen-sheet">
   <div class="page-center"><div class="sheet">
     <h1>ARK NYÅPNING <span class="boo">— THE ENEMY'S STORE</span></h1>
-    <p class="intro">The fourth map. The squirrels have broken into the <b>ARK bookstore</b> on its opening day: sale tables, the <b>−40%</b> signs, the 10-kroner shelf, two columns of yellow balloons and the red carpet. The <b>ARK sign</b> hangs from the ceiling and glares at whoever's turn it is. It's terrain like everything else, so you can blow it apart. The hazard is the <b>returns shredder</b> under the floor.</p>
+    <p class="intro">The fourth map. The squirrels have broken into the <b>ARK bookstore</b> on its opening day: sale tables, the <b>−40%</b> signs, the 10-kroner shelf, two columns of yellow balloons and the red carpet. The <b>ARK sign</b> hangs from the ceiling and glares at whoever's turn it is, while a spiky-haired kid stands on top of the K and pees on its logo. It's terrain like everything else, so you can blow it apart. The hazard is the <b>returns shredder</b> under the floor.</p>
     <p class="intro"><b>v2: solid vs background.</b> Everything solid has a <b>thick black outline</b> and casts a shadow, in full colour. The back wall, the bookshelves behind and the card wall are <b>faded, cooler and soft</b>, so shots and squirrels pass in front of them. The holes you hide in (under the tables, inside the 10-kroner shelf) are <b>dark</b>. Press <b>Hide background</b> to see only what is solid.</p>
     <div class="controls">
       <button class="cbtn on" id="ov-btn">Show cover &amp; pickups</button>
@@ -248,7 +248,7 @@ const MAP = {
 const HAZARD = { name: "Returns shredder", icon: "✂️", words: ["SHRED!", "PULPED!", "RETURNED!"], lines: ["Remaindered!", "−100%!", "Back to the publisher…"] };
 const GAPS = [[400, 470], [800, 860]];
 const SIGN = { x0: 466, x1: 772, y0: 92, y1: 172, logo: [735, 136, 34] };
-const TAUNTS = ["HELE BUTIKKEN −40%!", "Used books? How… quaint.", "Have you got our loyalty card?", "Nyåpning! Again!", "Squirrels don't read."];
+const TAUNTS = ["Somebody get that kid off my sign!", "HELE BUTIKKEN −40%!", "Used books? How… quaint.", "Have you got our loyalty card?", "Nyåpning! Again!", "Squirrels don't read."];
 const OUCH = ["AU! Full price for that!", "No refunds!", "That's coming out of your wages!", "I'm calling security!"];
 
 function paintBg(b) {
@@ -468,6 +468,7 @@ function makeWorld(cv, opts = {}) {
     // the pickups, bobbing
     ["napalm", "hbomb"].forEach((k) => { if (!W.picks[k]) return; const [px, py0] = pk[k], py = W.dropY(px, py0) - 12 + Math.sin(t / 12) * 2; drawPickup(c, px, py, k); });
     drawEyes(c, W, t);
+    const kf = kidFeet(W.solid); if (kf) drawKid(c, kf, t);
     W.sq.forEach((s, i) => { if (!s.dead) drawSquirrel(c, s.x, s.y, s.col, i === W.active, t, s.name, s.hp, s.x > SW / 2); });
     if (W.proj) { c.fillStyle = "#8a5526"; ell(c, W.proj.x, W.proj.y, 6, 8); c.fill(); c.fillStyle = "#5b3516"; c.fillRect(W.proj.x - 6, W.proj.y - 9, 12, 4); }
     W.parts = W.parts.filter((p) => { p.x += p.vx; p.y += p.vy; p.vy += p.paper ? 0.12 : 0.25; p.vx *= .98; p.life--; c.fillStyle = p.col; c.fillRect(p.x, p.y, p.paper ? 6 : 4, p.paper ? 3 : 4); return p.life > 0; });
@@ -489,6 +490,44 @@ function drawPickup(c, x, y, k) {
 }
 
 // The ARK logo watches the squirrel whose turn it is.
+// v3: a spiky-haired kid in a striped shirt stands on top of the K and pees
+// on the ARK logo, the classic car-window sticker. Not solid: he's scenery,
+// and if the K under him is blown away he's gone.
+const KID = { x: 662, stream: [710, 120] };
+function kidFeet(solid) { let y = 60; while (y < 140 && !solid(KID.x, y)) y++; return y < 125 ? y : null; }
+function drawKid(c, y, t) {
+  const x = KID.x;
+  c.save(); c.lineJoin = "round"; c.lineCap = "round"; c.strokeStyle = "#111"; c.lineWidth = 2.5;
+  // the stream: an arc onto the logo, dashes running down it, and splashes
+  const S = 1.5, [sx, sy] = KID.stream, ox = x + 9 * S, oy = y - 21 * S;
+  c.strokeStyle = "rgba(255,214,0,.9)"; c.lineWidth = 3.5; c.setLineDash([7, 4]); c.lineDashOffset = -t * 0.9;
+  c.beginPath(); c.moveTo(ox, oy); c.quadraticCurveTo(ox + 26, oy - 22, sx, sy); c.stroke(); c.setLineDash([]);
+  c.fillStyle = "#ffd600"; for (let k = 0; k < 4; k++) { const a = -2.4 + k * 0.5 + Math.sin(t / 4 + k) * 0.2, d = 5 + ((t + k * 5) % 12) * 0.7; ell(c, sx + Math.cos(a) * d, sy + Math.sin(a) * d, 1.8, 1.8); c.fill(); }
+  c.fillStyle = "rgba(255,214,0,.55)"; ell(c, sx + 4, sy + 6, 7, 3); c.fill();
+  c.strokeStyle = "#111"; c.lineWidth = 2.5 / S;
+  c.translate(x, y); c.scale(S, S); c.translate(-x, -y);
+  // sneakers and legs
+  c.fillStyle = "#fff"; rr(c, x - 9, y - 5, 10, 5, 2); c.fill(); c.stroke(); rr(c, x + 1, y - 5, 10, 5, 2); c.fill(); c.stroke();
+  c.fillStyle = "#f2c59b"; c.fillRect(x - 6, y - 14, 4, 9); c.fillRect(x + 3, y - 14, 4, 9);
+  c.fillStyle = "#2d2d2d"; rr(c, x - 8, y - 22, 17, 10, 2); c.fill(); c.stroke();
+  // striped shirt, leaning back a little
+  c.save(); c.translate(x, y - 22); c.rotate(-0.12);
+  c.beginPath(); rr(c, -9, -17, 18, 18, 4); c.save(); c.clip();
+  for (let k = 0; k < 6; k++) { c.fillStyle = k % 2 ? "#111" : "#d7263d"; c.fillRect(-9, -17 + k * 3, 18, 3); }
+  c.restore(); rr(c, -9, -17, 18, 18, 4); c.stroke();
+  // hands on hips, arm forward
+  c.fillStyle = "#f2c59b"; ell(c, 10, -5, 3, 3); c.fill(); c.stroke();
+  // head: big grin, eye squeezed shut, spiky hair
+  c.fillStyle = "#f2c59b"; ell(c, 2, -26, 9, 9); c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(4, -22); c.quadraticCurveTo(8, -18, 11, -23); c.stroke();
+  c.beginPath(); c.moveTo(5, -29); c.lineTo(9, -28); c.stroke();
+  c.fillStyle = "#ffcf3f"; c.beginPath(); c.moveTo(-9, -27);
+  [[-12, -36], [-5, -33], [-6, -42], [0, -35], [3, -44], [5, -35], [11, -40], [9, -31], [11, -28]].forEach(([px, py]) => c.lineTo(px, py));
+  c.closePath(); c.fill(); c.stroke();
+  c.restore();
+  c.restore();
+}
+
 function drawEyes(c, W, t) {
   if (!W.logoAlive()) return;
   const [lx, ly] = SIGN.logo, s = W.sq[W.active];
@@ -579,6 +618,7 @@ function arkThumb(c) {
   const t = mk(SW, SH), tc = t.getContext("2d"); paintBg(c); paintTerrain(tc); paintHazard(c, 0); c.drawImage(inkOf(t), 0, 0); c.drawImage(t, 0, 0);
   // the glare, so the thumbnail already looks back at you
   const [lx, ly] = SIGN.logo; [-12, 12].forEach((dx) => { c.fillStyle = "#fff"; ell(c, lx + dx, ly - 2, 8, 9); c.fill(); c.fillStyle = "#111"; ell(c, lx + dx, ly + 2, 3.5, 3.5); c.fill(); });
+  const tm = t.getContext("2d").getImageData(0, 0, SW, SH).data; const kf = kidFeet((x, y) => tm[((y | 0) * SW + (x | 0)) * 4 + 3] > 40); if (kf) drawKid(c, kf, 0);
 }
 let lobbyState = "host";
 function renderLobby() {
