@@ -6,7 +6,8 @@
 // solved, and the whole party walks into the next room together. In the last
 // room the party votes on who stole Drey's golden hazelnut.
 //
-// A challenge with `after` stays locked until that one is solved. A room with a
+// A challenge with `after` stays locked until that one is solved; players find
+// that out by inspecting it, nothing lists the order. A room with a
 // `key` keeps its door shut after its challenges: its cabinet opens, someone
 // takes the key out and brings it to Drey, and he hands over the key to the door.
 //
@@ -62,22 +63,22 @@
         { id: "shelf2", type: "shelf", x: 2, y: 1, jars: 2, solid: true, opens: "jars", look: "You see a pantry shelf. 2 full jars, 2 empty." },
         { id: "shelf3", type: "shelf", x: 7, y: 1, jars: 4, solid: true, opens: "jars", look: "You see a pantry shelf. 4 full jars." },
         { id: "shelf4", type: "shelf", x: 8, y: 1, jars: 0, solid: true, opens: "jars", look: "You see a pantry shelf. All 4 jars are empty!" },
-        { id: "ledger", type: "table", x: 12, y: 8, paper: true, solid: true, opens: "jars", look: "You see Drey's pantry ledger. Columns of sums, and a scribbled note.", lockedLook: "You see Drey's ledger drawer. It is locked: open the barrel lock first." },
+        { id: "ledger", type: "table", x: 12, y: 8, paper: true, solid: true, opens: "jars", look: "You see Drey's pantry ledger. Columns of sums, and a scribbled note.", lockedLook: "You see Drey's ledger in a locked drawer. A little barrel is carved on its lock." },
         { id: "b1", type: "barrel", x: 2, y: 8, sym: "acorn", dots: 2, solid: true, rule: 0, opens: "barrels", look: "Carved on the barrel: \"The leaf is in the lock, but it is not first.\"" },
         { id: "b2", type: "barrel", x: 4, y: 8, sym: "mushroom", dots: 3, solid: true, rule: 1, opens: "barrels", look: "Carved on the barrel: \"The acorn comes before the mushroom, but never right beside it.\"" },
         { id: "b3", type: "barrel", x: 6, y: 8, sym: "leaf", dots: 1, solid: true, rule: 2, opens: "barrels", look: "Carved on the barrel: \"The pinecone is only used if the leaf is last.\"" },
         { id: "prints", type: "prints", x: 5, y: 2, clue: "prints", look: "You see smudged paw prints. Pads and claw marks, but not the thin toes of a bird." },
         { id: "hair", type: "fur", x: 4, y: 1, clue: "hair", look: "You see coarse grey hairs with a black band, caught on the window frame." },
         { id: "drey", type: "drey", x: 10, y: 4, solid: true, npc: true, look: "You see Drey. He looks very worried." },
-        { id: "cabinet", type: "cabinet", x: 12, y: 1, solid: true, after: "jars", look: "You see Drey's key cabinet. It is locked tight." },
+        { id: "cabinet", type: "cabinet", x: 12, y: 1, solid: true, after: "jars", look: "You see Drey's key cabinet. It is locked tight. A ledger page is painted on its door." },
       ],
       challenges: ["barrels", "jars"],
       // the cabinet holds a key; Drey swaps it for the key to the door
       key: { cabinet: "cabinet", to: "drey" },
-      drey: ["Thank you for coming, friends. Find out who took my golden hazelnut!", "First the barrel lock, then my ledger. When the ledger adds up, my key cabinet opens. Bring me the key inside!"],
+      drey: ["Thank you for coming, friends. Find out who took my golden hazelnut!", "Find some compelling clues, and I'll let you be my investigators."],
       dreyKey: {
-        locked: "My key cabinet only opens when the ledger adds up. The barrel lock first, then the ledger.",
-        open: "The cabinet is open! Take the key out and bring it to me.",
+        locked: "Find some compelling clues, and I'll let you be my investigators.",
+        open: "My key cabinet is open! Bring me the key inside.",
         carried: "{name} has my cabinet key. Bring it here and I will give you the key to the stairs.",
         given: "My cabinet key, thank you! Here is the key to the stairs. Up to the Reading Nook with you!",
       },
@@ -151,7 +152,7 @@
   // `hint` is the suggested hint a teammate can give when someone asks.
   const CHALLENGES = {
     barrels: { room: 0, name: "Open the barrel lock", hint: "Start with the acorn and the mushroom: in three slots there is only one way to keep them apart." },
-    jars: { room: 0, after: "barrels", locked: "Open the barrel lock first. Drey keeps his ledger in a locked drawer.", name: "How many jars did the thief take?", hint: "Work out how many full jars Drey should have, and don't miss the scribbled note. Then count the full jars on the shelves." },
+    jars: { room: 0, after: "barrels", locked: "Drey's ledger is in a locked drawer. A little barrel is carved on its lock.", unlocked: "*click* A drawer unlocks somewhere in the pantry.", name: "How many jars did the thief take?", hint: "Work out how many full jars Drey should have, and don't miss the scribbled note. Then count the full jars on the shelves." },
     book: { room: 1, name: "Crack the bookmark code", hint: "The numbers are page, line and word. Take the first letter of each word." },
     map: { room: 1, name: "Put the torn map together", hint: "Turn each piece until the red path joins up." },
     accuse: { room: 2, name: "Name the thief together", hint: "No single clue is enough. Each one rules some suspects out." },

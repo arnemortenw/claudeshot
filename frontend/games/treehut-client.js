@@ -110,9 +110,6 @@ body.th-active #game-area{width:100%;}
   border:1px solid;border-color:var(--edge-lo) var(--edge-hi) var(--edge-hi) var(--edge-lo);}
 .th-ch.done .th-label{color:var(--muted);text-decoration:line-through;}
 .th-ch .by{color:var(--muted);font-size:10px;display:block;}
-.th-ch.locked .th-label{color:var(--muted);}
-.th-ch.locked .box{color:var(--muted);font-size:9px;}
-.th-ch .why{color:#c9a46a;font-size:10px;font-style:italic;display:block;}
 .th-door{margin-top:4px;padding:4px;text-align:center;font-size:11px;background:#1d1c1a;}
 .th-door.open{color:var(--green);}
 .th-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;}
@@ -315,7 +312,7 @@ body.th-active #game-area{width:100%;}
           logLine("ev", `${nameOf(uid)} solved: ${R.CHALLENGES[cid].name.replace(/[?.!]$/, "")}.`, true);
           floatOver(uid, "+" + R.POINTS.challenge + " challenge", "#f0c040");
           for (const c of Object.values(R.CHALLENGES)) {
-            if (c.after === cid) logLine("ev", `*click* Next challenge unlocked: ${c.name}`, true);
+            if (c.after === cid && c.unlocked) logLine("ev", c.unlocked, true);
           }
           const cab = R.ROOMS[S.room].objects.find((o) => o.type === "cabinet" && o.after === cid);
           if (cab) { logLine("ev", "*creak* Drey's key cabinet swings open. There is a key inside!", true); floatAt(cab.x, cab.y, "Open!", "#4ee04e"); }
@@ -464,8 +461,7 @@ body.th-active #game-area{width:100%;}
     function lockedDoorText() {
       const left = R.ROOMS[S.room].challenges.filter((c) => !S.solved[c]).length;
       if (!left && R.ROOMS[S.room].key) {
-        return carrier() ? "The door is locked. Bring the cabinet key to Drey: he has the key to the stairs."
-          : "The door is locked. Take the key from Drey's cabinet and bring it to him.";
+        return "The door is locked. Drey keeps the key to the stairs.";
       }
       return `The door is locked. Solve ${left} more challenge${left === 1 ? "" : "s"} to open it.`;
     }
@@ -593,11 +589,9 @@ body.th-active #game-area{width:100%;}
         const c = R.CHALLENGES[cid], by = S.solved[cid];
         const extra = cid === "map" && !by ? ` (${Object.keys(S.mapPieces).length}/${R.MAP_PIECES} pieces)` : "";
         const asked = !by && S.hintAsks[cid] ? `<span class="ask">${esc(nameOf(S.hintAsks[cid]))} asked for a hint</span>` : "";
-        const locked = R.locked(cid, S.solved);
-        return `<div class="th-ch${by ? " done" : ""}${locked ? " locked" : ""}" data-c="${cid}"><span class="box">${by ? "✓" : locked ? "🔒" : ""}</span>` +
-          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(you(by))}</span>` : ""}` +
-          `${locked ? `<span class="why">${esc(c.locked)}</span>` : ""}${asked}</span></div>`;
-      }).join("") + keySteps(room);
+        return `<div class="th-ch${by ? " done" : ""}" data-c="${cid}"><span class="box">${by ? "✓" : ""}</span>` +
+          `<span><span class="th-label">${esc(c.name)}${extra}</span>${by ? `<span class="by">by ${esc(you(by))}</span>` : ""}${asked}</span></div>`;
+      }).join("");
       $.challenges.querySelectorAll(".th-ch[data-c]").forEach((el) => { el.onclick = () => puzzles.open(el.dataset.c); });
       if (!R.doorTile(S.room)) {
         $.door.className = "th-door";
@@ -606,7 +600,7 @@ body.th-active #game-area{width:100%;}
         const n = room.challenges.filter((c) => S.solved[c]).length;
         $.door.className = "th-door" + (S.doorOpen ? " open" : "");
         $.door.textContent = S.doorOpen ? "Door open: walk through it →"
-          : room.key && n === room.challenges.length ? `🔒 Door locked: ${carrier() ? "bring the key to Drey" : "take the key from the cabinet"}`
+          : room.key && n === room.challenges.length ? "🔒 Door locked"
           : `🔒 Door locked: ${n} of ${room.challenges.length} solved`;
       }
 
@@ -614,19 +608,6 @@ body.th-active #game-area{width:100%;}
     }
 
     function you(uid) { const n = nameOf(uid); return n === "You" ? "you" : n; }
-
-    // The key's two steps after the challenges: take it from the cabinet, bring it to Drey.
-    function keySteps(room) {
-      if (!room.key) return "";
-      const cab = R.findObject(S.room, room.key.cabinet);
-      const row = (label, done, by, why) => `<div class="th-ch${done ? " done" : ""}${why ? " locked" : ""}"><span class="box">${done ? "✓" : why ? "🔒" : ""}</span>` +
-        `<span><span class="th-label">${label}</span>${by ? `<span class="by">${by}</span>` : ""}${why ? `<span class="why">${why}</span>` : ""}</span></div>`;
-      const took = S.keyGiven || carrier();
-      return row("Take the key from the cabinet", !!took, took ? `by ${esc(you(S.keyBy))}` : "",
-          S.solved[cab.after] ? "" : "Opens when the ledger is solved.") +
-        row("Bring the key to Drey", !!S.keyGiven, S.keyGiven ? `by ${esc(you(S.keyGiven))}` : carrier() ? `${esc(nameOf(carrier()))} ${carrier() === (meP() || {}).uid ? "carry" : "carries"} the key` : "",
-          took ? "" : "Take the key first.");
-    }
 
     let slotKey = "";
     function renderSlots() {

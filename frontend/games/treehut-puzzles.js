@@ -114,7 +114,7 @@
       const st = S();
       if (!st || st.over || !WINDOWS[cid] || R.CHALLENGES[cid].room !== st.room) return false;
       if (R.locked(cid, st.solved)) {
-        if (!quiet) api.look("🔒 " + R.CHALLENGES[cid].locked);
+        if (!quiet) api.look(R.CHALLENGES[cid].locked);
         return false;
       }
       if (win && win.cid === cid) return true;

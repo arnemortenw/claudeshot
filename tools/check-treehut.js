@@ -95,6 +95,9 @@ function makeGame(names, opts = {}) {
   check("only the Pantry has a key cabinet, and it opens after the ledger",
     R.ROOMS.map((r) => !!r.key).join() === "true,false,false" &&
     R.findObject(0, R.ROOMS[0].key.cabinet).after === "jars" && R.findObject(0, R.ROOMS[0].key.to).npc);
+  check("Drey asks for clues early in the Pantry", R.ROOMS[0].drey.includes("Find some compelling clues, and I'll let you be my investigators."));
+  check("nothing Drey says or the ledger shows names the order",
+    ![...R.ROOMS[0].drey, ...Object.values(R.ROOMS[0].dreyKey), R.CHALLENGES.jars.locked].some((t) => /first|then/i.test(t)));
   check("the ledger comes after the barrel lock", R.CHALLENGES.jars.after === "barrels" && !R.CHALLENGES.barrels.after);
 
   // no answer, anywhere in the shared file
