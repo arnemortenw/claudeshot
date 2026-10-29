@@ -567,3 +567,15 @@ test("the retreat runs while the shot is still flying", () => {
   assert.ok(s.x < x0);
   assert.ok(game.snapshot().rt > 0);
 });
+
+test("after the blast settles the turn waits 2.5 seconds before the next squirrel", () => {
+  const { game } = makeGame();
+  hello(game);
+  toAim(game);
+  const turn = game.turnNo;
+  game.endTurn();                                   // no shot: settles at once
+  let still = 0;
+  while (game.phase === "settle" && still < 600) { game.step(); still++; }
+  assert.ok(still >= 2.5 * R.FPS, `held ${still} frames`);
+  assert.notEqual(game.turnNo === turn && game.phase === "settle", true);
+});
