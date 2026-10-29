@@ -31,7 +31,10 @@ socket.on("game-started", () => {
   window.location.href = "game.html";
 });
 
-const GAME_NAMES = { snake: "🐍 Snake", hungry: "🍗 Hungry Lasse", shooter: "🔫 Shooter", eye: "👁️ Eye of Ark", showdown: "🌀 Jump Showdown", hexagone: "⬡ Hex-A-Gone", blockparty: "🧱 Block Party" };
+const GAME_NAMES = { snake: "🐍 Snake", hungry: "🍗 Hungry Lasse", shooter: "🔫 Shooter", eye: "👁️ Eye of Ark", showdown: "🌀 Jump Showdown", hexagone: "⬡ Hex-A-Gone", blockparty: "🧱 Block Party", treehut: "🐿️ Drey's Treehut" };
+
+// Games that need more than one player before the host can start.
+const MIN_PLAYERS = { treehut: 2 };
 
 let gameSettings = {};
 
@@ -59,6 +62,9 @@ function renderGameSettings(game) {
       });
     });
   }
+
+  // Drey's Treehut is one 15-minute case per game: no rounds picker.
+  if (game === "treehut") gameSettings.rounds = 1;
 
   if (game === "shooter") {
     gameSettings.rounds = 1;
@@ -159,9 +165,11 @@ function renderRoom(room) {
 
   const startBtn = document.getElementById("start-btn");
   if (isHost) {
-    const canStart = room.players.length >= 1;
+    const need = MIN_PLAYERS[room.game] || 1;
+    const canStart = room.players.length >= need;
     startBtn.disabled = !canStart;
-    startBtn.textContent = canStart ? "Start Game" : "Waiting for players...";
+    startBtn.textContent = canStart ? "Start Game"
+      : need > 1 ? `Waiting for players (${room.players.length} of ${need})...` : "Waiting for players...";
   }
 }
 

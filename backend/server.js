@@ -11,6 +11,7 @@ const EyeGame = require("./games/eye");
 const ShowdownGame = require("./games/showdown");
 const HexagoneGame = require("./games/hexagone");
 const BlockpartyGame = require("./games/blockparty");
+const TreehutGame = require("./games/treehut");
 
 const GAME_REGISTRY = {
   snake: { Game: SnakeGame, maxPlayers: 8 },
@@ -20,6 +21,7 @@ const GAME_REGISTRY = {
   showdown: { Game: ShowdownGame, maxPlayers: 8 },
   hexagone: { Game: HexagoneGame, maxPlayers: 8 },
   blockparty: { Game: BlockpartyGame, maxPlayers: 8 },
+  treehut: { Game: TreehutGame, maxPlayers: 6 },
 };
 
 const app = express();
@@ -228,6 +230,12 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("treehut-input", (data) => {
+    for (const [, game] of Object.entries(activeGames)) {
+      if (game instanceof TreehutGame) game.setInput(socket.id, data);
+    }
+  });
+
   socket.on("end-game", () => {
     for (const [, r] of getRooms()) {
       if (r.host === socket.id) {
@@ -252,6 +260,13 @@ io.on("connection", (socket) => {
   socket.on("play-again", () => {
     for (const [, r] of getRooms()) {
       if (r.host === socket.id) {
+        // Play again can come from a game's own end screen while it still runs.
+        if (activeGames[r.code]) {
+          activeGames[r.code].stop();
+          delete activeGames[r.code];
+        }
+        delete activeRounds[r.code];
+        r.gameStarted = false;
         io.to(r.code).emit("play-again");
         console.log(`Play again in room ${r.code}`);
         return;
