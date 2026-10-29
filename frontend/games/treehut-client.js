@@ -19,6 +19,7 @@
   const STEP_WAIT_MS = 700;     // give up waiting for the server to confirm a step after this
   const LOOK_MS = 3200;         // how long the green "You see..." line stays
   const MAX_LOG = 120;
+  const BUBBLE_MAX_MS = 7000;   // longest a speech bubble stays over Drey
 
   let session = null;
 
@@ -225,6 +226,7 @@ body.th-active #game-area{width:100%;}
       start.update(st, st.players.find((p) => p.id === s.socket.id));
       timeAt = performance.now();
       if (st.room !== shownRoom) enterRoom(first);
+      else sayIntro();
       noteNews(first);
       for (const p of st.players) {
         const q = pos.get(p.uid);
@@ -276,7 +278,18 @@ body.th-active #game-area{width:100%;}
       } else {
         logLine("ev", `The party enters ${room.name}.`, true);
       }
-      room.drey.forEach((l, i) => s.later(() => npc(l), 900 + i * 1400));
+      introLines = room.drey.slice();
+      sayIntro();
+    }
+
+    // Drey greets each room once you are in it, not while the briefing covers it.
+    let introLines = [];
+    function sayIntro() {
+      const me = meP();
+      if (!introLines.length || (me && !me.entered)) return;
+      let at = 900;
+      for (const l of introLines) { s.later(() => npc(l), at); at += bubbleMs(l); }
+      introLines = [];
     }
 
     // Console lines for what changed since the last state.
@@ -450,7 +463,8 @@ body.th-active #game-area{width:100%;}
         else if (carrier()) said = [L.carried.replace("{name}", nameOf(carrier()))];
         else said = [L.open];
       }
-      said.forEach((l, i) => s.later(() => npc(l), i * 900));
+      let at = 0;
+      for (const l of said) { s.later(() => npc(l), at); at += bubbleMs(l); }
     }
 
     function tileFromEvent(e) {
@@ -527,7 +541,13 @@ body.th-active #game-area{width:100%;}
         .map((l) => `<div class="${l.cls}"><span class="t">${l.t}</span>${esc(l.text)}</div>`).join("");
       $.log.scrollTop = $.log.scrollHeight;
     }
-    function npc(text) { logLine("npc", "Drey: " + text, false); }
+    // Drey's lines go to the console and into a speech bubble over his head.
+    let bubble = null;               // { text, room, until }
+    function npc(text) {
+      logLine("npc", "Drey: " + text, false);
+      if (S) bubble = { text, room: S.room, until: performance.now() + bubbleMs(text) };
+    }
+    function bubbleMs(text) { return Math.min(BUBBLE_MAX_MS, 2500 + text.length * 55); }
 
     root.querySelectorAll(".th-tab").forEach((t) => s.on(t, "click", () => {
       root.querySelectorAll(".th-tab").forEach((x) => x.classList.toggle("on", x === t));
@@ -685,6 +705,45 @@ body.th-active #game-area{width:100%;}
       }
     }
 
+    function wrapText(text, maxW) {
+      const lines = [];
+      let line = "";
+      for (const w of text.split(" ")) {
+        const next = line ? line + " " + w : w;
+        if (line && ctx.measureText(next).width > maxW) { lines.push(line); line = w; } else line = next;
+      }
+      if (line) lines.push(line);
+      return lines;
+    }
+
+    // A white bubble with a tail pointing down at Drey, kept inside the room.
+    function drawBubble(now) {
+      if (!bubble || bubble.room !== S.room || now > bubble.until) return;
+      const drey = R.ROOMS[S.room].objects.find((o) => o.npc);
+      if (!drey) return;
+      ctx.font = "9px Verdana";
+      const lines = wrapText(bubble.text, 150);
+      const lh = 11, pad = 5;
+      const w = Math.ceil(Math.max(...lines.map((l) => ctx.measureText(l).width))) + pad * 2;
+      const h = lines.length * lh + pad * 2 - 2;
+      const cx = drey.x * T + 16, tipY = drey.y * T - 12;
+      const x = Math.max(4, Math.min(W - w - 4, cx - w / 2)), y = Math.max(4, tipY - 6 - h);
+      ctx.globalAlpha = Math.min(1, (bubble.until - now) / 300);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+      ctx.fillStyle = "#fbf6e6";
+      ctx.fillRect(x, y, w, h);
+      // the tail
+      ctx.fillStyle = "#000";
+      ctx.beginPath(); ctx.moveTo(cx - 6, y + h); ctx.lineTo(cx, tipY + 1); ctx.lineTo(cx + 6, y + h); ctx.fill();
+      ctx.fillStyle = "#fbf6e6";
+      ctx.beginPath(); ctx.moveTo(cx - 4, y + h - 1); ctx.lineTo(cx, tipY - 1); ctx.lineTo(cx + 4, y + h - 1); ctx.fill();
+      ctx.fillStyle = "#2a1a0c"; ctx.textBaseline = "top";
+      lines.forEach((l, i) => ctx.fillText(l, x + pad, y + pad + i * lh));
+      ctx.textBaseline = "alphabetic";
+      ctx.globalAlpha = 1;
+    }
+
     function drawPlayer(p, q, now) {
       const k = Math.min(1, (now - q.t) / STEP_MS);
       const px = (q.fx + (q.x - q.fx) * k) * T, py = (q.fy + (q.y - q.fy) * k) * T;
@@ -743,6 +802,7 @@ body.th-active #game-area{width:100%;}
       const g = ctx.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, 320);
       g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.35)");
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      drawBubble(now);
     }
 
     const kase = window.TREEHUT_CASE.create({
