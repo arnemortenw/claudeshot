@@ -19,6 +19,8 @@
 //   fire { x, y }         a click: punches or bites towards x, drops the
 //                         coconut at x, or teleports to x, y
 //   end                   End turn (the button or Enter)
+// The Napalm and H-Bomb lie on the map as crates. Any squirrel that touches
+// one takes it for its own player; one that falls into the hazard is lost.
 // Only the player whose turn it is can act. After the attack they have a
 // 5-second retreat: they can still walk, jump and end the turn, nothing else.
 // Out: "squirrels-init" to one client, "squirrels-state" to the room 30 times
@@ -74,12 +76,15 @@ class SquirrelsGame {
       slot: i, uid: "p" + (i + 1), id: p.id, name: p.name,
       toy: R.isToy(p.toy) ? p.toy : R.TOYS[i % R.TOYS.length].key,
       color: R.PLAYER_COLORS[i], next: 0, outAt: null, dealt: 0, ready: false,
-      weapon: "bazooka", teleports: 0,
+      weapon: "bazooka", teleports: 0, found: { napalm: 0, hbomb: 0 },
     }));
 
     this.mask = R.makeTerrain(this.map);
     this.craters = [];
-    this.squirrels = R.spawns(this.mask, this.players.length, this.perPlayer, this.seed)
+    // the crates come to rest before anyone moves, and nobody starts on one
+    this.pickups = R.pickupsOf(this.map).map((pk) => ({ ...pk, taken: false }));
+    for (let k = 0; k < R.H && this.pickups.some((pk) => !pk.taken && !this.solid(pk.x, pk.y + 1)); k++) this.stepPickups(false);
+    this.squirrels = R.spawns(this.mask, this.players.length, this.perPlayer, this.seed, this.pickups)
       .sort((a, b) => a.player - b.player || a.index - b.index)
       .map((sp, i) => ({
         i, p: sp.player, n: sp.index, name: R.SQUIRREL_NAMES[sp.player][sp.index],
@@ -215,6 +220,7 @@ class SquirrelsGame {
   has(p, w) {
     if (!R.WEAPONS[w]) return false;
     if (w === "teleport") return p.teleports > 0;
+    if (R.WEAPONS[w].pickup) return p.found[w] > 0;
     return this.unlocked.includes(w);
   }
 
@@ -227,6 +233,10 @@ class SquirrelsGame {
     const kind = R.WEAPONS[w].kind;
     if (kind === "teleport") return this.teleport(s, aim.x, aim.y);
     this.fired = true;       // first, so a kill by an instant hit counts
+    if (R.WEAPONS[w].pickup) {
+      p.found[w]--;
+      if (!p.found[w]) p.weapon = "bazooka";
+    }
     if (kind === "shot") this.fire(aim.ang, aim.pow, w);
     else if (kind === "beam") this.blast(aim.ang);
     else if (kind === "melee") this.melee(w, aim.x >= s.x ? 1 : -1);
@@ -511,6 +521,7 @@ class SquirrelsGame {
 
     for (const q of this.squirrels) this.stepSquirrel(q);
     for (const p of this.shots.slice()) this.stepShot(p);
+    this.stepPickups(true);
 
     if (this.phase === "flight" && (!this.shots.length || this.phaseT > FLIGHT_MAX)) {
       this.shots = [];
@@ -589,9 +600,54 @@ class SquirrelsGame {
     if (i >= 0) this.shots.splice(i, 1);
   }
 
+  // One frame of the crates on the map: each drops onto solid ground (again
+  // when a crater opens under it), sinks if it falls into the hazard, and goes
+  // to the player of the first squirrel that touches it.
+  stepPickups(live) {
+    for (const pk of this.pickups) {
+      if (pk.taken) continue;
+      let n = 0;
+      while (!this.solid(pk.x, pk.y + 1) && n++ < R.PICKUP_FALL) pk.y++;
+      if (pk.y > R.WATER) {
+        pk.taken = true;
+        if (live) this.pop(pk.x, R.WATER - 40, `${R.WEAPONS[pk.type].short} sank…`, "#fff", 14);
+        continue;
+      }
+      if (!live) continue;
+      const q = this.squirrels.find((s) => !s.dead && !s.drowned && R.touchesPickup(s, pk));
+      if (!q) continue;
+      const p = this.players[q.p];
+      pk.taken = true;
+      p.found[pk.type]++;
+      this.emitEvent({ k: "found", w: pk.type, slot: p.slot });
+      this.pop(pk.x, pk.y - 60, `${p.name} found ${R.WEAPONS[pk.type].name}!`, p.color, 17);
+    }
+  }
+
+  // A burning pistachio: falls, sticks to the first solid pixel (and falls
+  // again if the ground under it goes), and burns whoever stands in it.
+  stepFlame(p) {
+    p.life--;
+    if (!p.stuck) {
+      p.vy += R.G; p.x += p.vx; p.y += p.vy;
+      if (this.solid(p.x, p.y)) {
+        p.stuck = true;
+        let k = 0;
+        while (this.solid(p.x, p.y) && k++ < 12) p.y--;
+      }
+    } else if (!this.solid(p.x, p.y + 2)) p.stuck = false;
+    if (p.life % R.FLAME.every === 0) {
+      for (const q of this.squirrels) {
+        if (!q.dead && !q.drowned && Math.hypot(q.x - p.x, q.y - 12 - p.y) < R.FLAME.reach) this.hurt(q, R.FLAME.dmg, p.owner);
+      }
+    }
+    if (p.y > R.WATER || p.life <= 0 || p.x < -50 || p.x > R.W + 50) this.removeShot(p);
+  }
+
   // One frame of a shot. Grenades bounce and go off when the fuse runs out;
   // everything else goes off on the first solid pixel or squirrel it touches.
   stepShot(p) {
+    if (p.type === "flame") return this.stepFlame(p);
     const w = R.WEAPONS[p.type] || {};
     p.t++;
     p.vy += R.G;
@@ -622,12 +678,18 @@ class SquirrelsGame {
     }
   }
 
-  // A shot goes off. The Pinecone Cluster throws out its pine nuts.
+  // A shot goes off. The Pinecone Cluster throws out its pine nuts, the
+  // Napalm its burning pistachios.
   boom(p, x, y) {
     this.removeShot(p);
     if (p.type === "pine") return this.explode(x, y, R.PINE.r, R.PINE.dmg, p.owner);
+    if (p.type === "hbomb") return this.nuke(x, y, p.owner);
     const w = R.WEAPONS[p.type];
     this.explode(x, y, w.r, w.dmg, p.owner);
+    for (let i = 0; i < (w.flames || 0); i++) {
+      this.shots.push({ type: "flame", x, y: y - 6, vx: (this.rnd() - 0.5) * 7, vy: -2 - this.rnd() * 4, t: 0,
+        life: R.FLAME.life + Math.floor(this.rnd() * R.FLAME.jitter), stuck: false, owner: p.owner, fuse: 0 });
+    }
     for (let i = 0; i < (w.split || 0); i++) {
       this.shots.push({ type: "pine", x, y: y - 8, vx: (i - (w.split - 1) / 2) * 1.6 + (this.rnd() - 0.5), vy: -5 - this.rnd() * 3, t: 20, owner: p.owner, fuse: 0 });
     }
@@ -654,6 +716,23 @@ class SquirrelsGame {
       s.ground = false;
       s.jumping = false;
     }
+  }
+
+  // The Golden Hazelnut H-Bomb: a huge crater, and every squirrel within its
+  // kill radius dies, the thrower's included.
+  nuke(x, y, owner) {
+    const w = R.WEAPONS.hbomb;
+    const c = this.carve(x, y, w.r);
+    this.emitEvent({ k: "crater", ...c });
+    this.emitEvent({ k: "nuke", x: r1(x), y: r1(y) });
+    for (const s of this.squirrels) {
+      if (s.drowned || s.dead) continue;
+      const dx = s.x - x, dy = (s.y - 20) - y, d = Math.hypot(dx, dy) || 1;
+      if (d > w.kill) continue;
+      this.hurt(s, s.hp, owner);
+      s.vx = (dx / d) * 10; s.vy = -9; s.ground = false; s.jumping = false;
+    }
+    this.pop(x, y - 90, "KA-BOOOM!", "#ffd700", 36);
   }
 
   hurt(s, dmg, by) {
@@ -710,6 +789,8 @@ class SquirrelsGame {
       aim: this.aim, nc: this.craters.length,
       rt: this.retreating() ? Math.ceil(this.retreatT / R.FPS) : 0, fired: this.fired,
       un: this.unlocked, wp: this.players.map((p) => p.weapon), tp: this.players.map((p) => p.teleports),
+      fd: this.players.map((p) => p.found),
+      pk: this.pickups.map((pk) => ({ type: pk.type, x: r1(pk.x), y: r1(pk.y), taken: pk.taken })),
     };
     if (full) {
       out.map = this.map;

@@ -72,10 +72,10 @@
       how: "Coconut Strike · click a spot, a coconut drops from the sky" },
     teleport: { name: "Teleport", short: "Teleport", icon: "✨", kind: "teleport", dmgText: "no dmg",
       how: "Teleport · click anywhere to pop up there. You still get your shot" },
-    napalm:   { name: "Pistachio Napalm", short: "Napalm", icon: "🔥", kind: "shot", pickup: true, dmgText: "12 + fire",
-      how: "Pistachio Napalm · found on the map" },
-    hbomb:    { name: "Golden Hazelnut H-Bomb", short: "H-Bomb", icon: "☢️", kind: "shot", pickup: true, dmgText: "instant kill",
-      how: "Golden Hazelnut H-Bomb · found on the map" },
+    napalm:   { name: "Pistachio Napalm", short: "Napalm", icon: "🔥", kind: "shot", pickup: true, dmg: 12, r: 22, speed: 19, wind: true, flames: 14, dmgText: "12 + fire",
+      how: "Pistachio Napalm · bursts into burning pistachios that stick and burn for 3 s" },
+    hbomb:    { name: "Golden Hazelnut H-Bomb", short: "H-Bomb", icon: "☢️", kind: "shot", pickup: true, r: 150, kill: 240, speed: 17, dmgText: "instant kill",
+      how: "Golden Hazelnut H-Bomb · kills every squirrel in a huge blast. Yours too" },
   };
   const WIND_PUSH = 0.045;                 // per frame, times the wind (-1 .. 1)
 
@@ -102,16 +102,34 @@
       plop: "tssss.", words: ["TSSSS!", "SIZZLE!", "FWOOSH!"], lines: ["The floor is LAVA!", "Hot hot hot!", "Toasted nut."] },
   };
 
+  // pickups: where each map's Napalm (under cover) and H-Bomb (somewhere hard
+  // to reach) lie at the start, in design units. Each drops straight down from
+  // there onto whatever is solid below it.
   const MAPS = {
     oak: { name: "Moonlit Oak", hazard: "river", order: 0,
-      blurb: "A hollow oak, a rock arch, a log shelter, branch ledges and mushrooms." },
+      blurb: "A hollow oak, a rock arch, a log shelter, branch ledges and mushrooms.",
+      pickups: { napalm: [620, 360], hbomb: [588, 60] } },      // in the tunnel, on the top branch
     yard: { name: "Backyard BBQ", hazard: "pool", order: 1,
-      blurb: "Doghouse, picnic table, sandbox, gnome, fence, grill and the pool." },
+      blurb: "Doghouse, picnic table, sandbox, gnome, fence, grill and the pool.",
+      pickups: { napalm: [945, 400], hbomb: [1150, 100] } },    // under the picnic table, on the bird feeder
     room: { name: "Kid’s Bedroom", hazard: "lava", order: 2,
-      blurb: "Blanket fort, letter blocks, a book tent, the toy box and shelves." },
+      blurb: "Blanket fort, letter blocks, a book tent, the toy box and shelves.",
+      pickups: { napalm: [215, 370], hbomb: [1122, 100] } },    // under the blanket fort, on the high shelf
   };
   const MAP_KEYS = Object.keys(MAPS);
   const hazardOf = (mapKey) => HAZARDS[(MAPS[mapKey] || MAPS.oak).hazard];
+  const PICKUPS = ["napalm", "hbomb"];
+
+  // A map's pickups in world px, before they drop: [{ type, x, y }].
+  function pickupsOf(mapKey) {
+    const at = (MAPS[mapKey] || MAPS.oak).pickups || {};
+    return PICKUPS.filter((k) => at[k]).map((type) => ({ type, x: at[type][0] * K, y: at[type][1] * K }));
+  }
+  const PICKUP_REACH = 36;                 // a squirrel this close to a crate takes it: where they overlap on screen
+  const PICKUP_FALL = 3;                   // px per frame a crate drops
+  // A burning pistachio from the Napalm: it sticks where it lands and hurts
+  // whoever stands in it every `every` frames for `life` frames or so.
+  const FLAME = { dmg: 4, every: 20, reach: 18, life: 180, jitter: 40 };
 
   // ---------------------------------------------------------------- seeded rng
   function mulberry(seed) {
@@ -442,14 +460,16 @@
   // Spreads players x perPlayer squirrels over dry ground. The slots run left
   // to right and go to the players in turn (a, b, c, a, b, c, ...), so no player
   // starts bunched up, and no two squirrels are closer than SPAWN_GAP.
-  // Returns [{ player, index, x, y }] with player and index counted from 0.
-  function spawns(mask, players, perPlayer, seed = 1) {
+  // Spots in `avoid` ({ x, y }, the map's crates) are kept clear, so nobody
+  // starts on a pickup. Returns [{ player, index, x, y }] with player and
+  // index counted from 0.
+  function spawns(mask, players, perPlayer, seed = 1, avoid = []) {
     const rnd = mulberry(seed);
     const n = players * perPlayer;
     const cols = [];
     for (let x = 30; x < W - 30; x += 2) {
       const y = standable(mask, x);
-      if (y != null) cols.push([x, y]);
+      if (y != null && !avoid.some((a) => Math.abs(a.x - x) < PICKUP_REACH + 20 && Math.abs(a.y - y) < 60)) cols.push([x, y]);
     }
     if (!cols.length) throw new Error("no dry ground to spawn on");
     // which player gets the leftmost slot rotates with the seed
@@ -498,6 +518,11 @@
     return START.concat(ROUND_UNLOCKS.slice(0, Math.max(0, round - 1)));
   }
 
+  // Has a squirrel at (x, y) (its feet) touched the crate at (pk.x, pk.y)?
+  function touchesPickup(q, pk) {
+    return Math.hypot(q.x - pk.x, q.y - 18 - (pk.y - 14)) < PICKUP_REACH;
+  }
+
   // What's written on a locked slot.
   function lockText(w) {
     if (w === "teleport") return "Kill to unlock";
@@ -535,5 +560,6 @@
     mulberry, oakGround, makeTerrain, solid, crater, dropY, standable, spawns, aimFromDrag, launch,
     ORDER, START, ROUND_UNLOCKS, PINE, RETREAT_SECONDS, MELEE_REACH, unlockedFor, lockText, blasterTrace, meleeVictims,
     TOYS, isToy, HAZARDS, MAP_KEYS, hazardOf, yardGround, roomBooks, roomBlocks, roomBricks,
+    PICKUPS, pickupsOf, PICKUP_REACH, PICKUP_FALL, FLAME, touchesPickup,
   };
 });

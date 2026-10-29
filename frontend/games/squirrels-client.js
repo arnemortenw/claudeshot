@@ -15,7 +15,9 @@
 // The weapon tray along the bottom is always your own: greyed out until your
 // turn, locked slots say how they unlock. Shots and the Blaster are aimed by
 // dragging back; Punch, Bite, Coconut and Teleport by clicking a spot. While
-// you point, the other laptops see the same guide.
+// you point, the other laptops see the same guide. The Napalm and H-Bomb lie
+// on the map as glowing crates; whoever touches one finds it, and it shows up
+// with a count in their tray and on their panel.
 
 (function () {
   const R = window.SQUIRRELS_RULES;
@@ -270,6 +272,15 @@
     } else if (e.k === "unlock") {
       for (const w of e.w) S.fresh[w] = performance.now() + 3200;
       renderTray();
+    } else if (e.k === "found") {
+      if (e.slot === S.me) { S.fresh[e.w] = performance.now() + 3200; renderTray(); }
+    } else if (e.k === "nuke") {
+      S.flash = 1;
+      S.shake = 30;
+      for (let i = 0; i < 170; i++) {
+        const a = Math.random() * 6.28, sp = Math.random() * 11;
+        S.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3, life: 50 + Math.random() * 50, color: ["#ffd700", "#ffb347", "#fff1a8", "#ff7b39"][i % 4], size: 3 + Math.random() * 6, g: 0.12, fire: i % 3 === 0 });
+      }
     }
   }
 
@@ -371,7 +382,8 @@
   const canMove = () => S.st && S.st.cur === S.me && S.me >= 0 && (S.st.ph === "aim" || S.st.rt > 0);
   const weaponOf = (slot) => (S.st && S.st.wp && S.st.wp[slot]) || "bazooka";
   const kindOf = (slot) => R.WEAPONS[weaponOf(slot)].kind;
-  const hasWeapon = (slot, w) => w === "teleport" ? S.st.tp[slot] > 0 : S.st.un.includes(w);
+  const foundOf = (slot, w) => (S.st.fd && S.st.fd[slot] && S.st.fd[slot][w]) || 0;
+  const hasWeapon = (slot, w) => w === "teleport" ? S.st.tp[slot] > 0 : R.WEAPONS[w].pickup ? foundOf(slot, w) > 0 : S.st.un.includes(w);
   const send = (data) => S.socket.emit("squirrels-input", data);
   const playerAlive = (slot) => S.st.sq.some((q, i) => S.names[i].p === slot && !q.dead);
 
@@ -426,7 +438,8 @@
     S.players.forEach((p) => {
       const got = R.ORDER.filter((k) => !R.START.includes(k) && !R.WEAPONS[k].pickup && hasWeapon(p.slot, k))
         .map((k) => R.WEAPONS[k].icon + (k === "teleport" && st.tp[p.slot] > 1 ? "×" + st.tp[p.slot] : "")).join(" ");
-      const text = `Unlocked: ${got || "nothing yet"}`, loot = $("sq-loot" + p.slot);
+      const found = R.PICKUPS.filter((k) => foundOf(p.slot, k)).map((k) => R.WEAPONS[k].icon + (foundOf(p.slot, k) > 1 ? "×" + foundOf(p.slot, k) : "")).join(" ");
+      const text = `Unlocked: ${got || "nothing yet"}${found ? ` · Found: ${found}` : ""}`, loot = $("sq-loot" + p.slot);
       if (loot.textContent !== text) loot.textContent = text;
     });
     const live = st.ph === "aim", run = st.rt > 0;
@@ -466,7 +479,7 @@
     const now = performance.now(), mine = S.me, pick = weaponOf(mine);
     const usable = st.cur === mine && (st.ph === "aim" || st.ph === "banner") && !st.fired;
     const html = R.ORDER.map((k, i) => {
-      const w = R.WEAPONS[k], have = hasWeapon(mine, k), cnt = k === "teleport" ? st.tp[mine] : 0;
+      const w = R.WEAPONS[k], have = hasWeapon(mine, k), cnt = k === "teleport" ? st.tp[mine] : w.pickup ? foundOf(mine, k) : 0;
       const cls = `sq-slot${pick === k ? " on" : ""}${have ? "" : " locked"}${have && S.fresh[k] > now ? " fresh" : ""}`;
       return `<button class="${cls}" data-w="${k}" title="${esc(have ? w.how : w.name + " · " + R.lockText(k))}"${have && usable ? "" : " disabled"}>` +
         `<kbd>${(i + 1) % 10}</kbd><span class="wi">${w.icon}</span>${esc(w.short)}<span class="dm">${have ? w.dmgText : R.lockText(k)}</span>` +
@@ -669,6 +682,7 @@
       ctx.restore();
     });
 
+    (st.pk || []).forEach((pk) => { if (!pk.taken) drawPickup(ctx, pk); });
     st.shots.forEach((p, i) => drawShot(ctx, p, S.shotDisp[i] || p));
 
     if (S.hz.fill === "lava" && Math.random() < 0.2) S.particles.push({ x: Math.random() * W, y: WATER + 3, vx: 0, vy: -0.5, life: 26, color: "#ffd25a", size: 2 + Math.random() * 2, g: 0 });
@@ -731,6 +745,10 @@
       ctx.lineWidth = 2.5; ctx.strokeStyle = "#111"; ctx.strokeRect(x - hw / 2, y, hw, 28);
       ctx.fillStyle = "#111"; ctx.fillText(hint, x, y + 21);
     }
+
+    // the H-Bomb's white flash
+    if (S.flash > 0.02) { ctx.fillStyle = `rgba(255,244,200,${S.flash})`; ctx.fillRect(0, 0, SW, SH); }
+    S.flash *= 0.94;
 
     document.getElementById("sq-overview").classList.toggle("on", cam.overview);
     S.shake *= 0.85;
@@ -870,9 +888,37 @@
     }
   }
 
+  // A crate lying on the map: glowing, bobbing, with its name over it.
+  function drawPickup(ctx, pk) {
+    const w = R.WEAPONS[pk.type], gold = pk.type === "hbomb", bob = Math.sin(S.frame / 14 + pk.x) * 3;
+    ctx.save(); ctx.translate(pk.x, pk.y - 16 + bob);
+    const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, 30);
+    glow.addColorStop(0, gold ? "rgba(255,215,0,.6)" : "rgba(150,220,90,.55)"); glow.addColorStop(1, "rgba(255,215,0,0)");
+    ctx.fillStyle = glow; ell(ctx, 0, 0, 30, 30); ctx.fill();
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 2;
+    ctx.fillStyle = "#111"; rr(ctx, -12, -12, 28, 28, 5); ctx.fill();
+    ctx.fillStyle = gold ? "#f7c948" : "#8bc34a"; rr(ctx, -14, -14, 28, 28, 5); ctx.fill(); ctx.stroke();
+    ctx.font = "17px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(w.icon, 0, 1);
+    ctx.font = `12px ${FONT}`; ctx.textBaseline = "alphabetic"; ctx.lineJoin = "round";
+    ctx.lineWidth = 3.5; ctx.strokeText(w.short.toUpperCase(), 0, -20);
+    ctx.fillStyle = "#fff"; ctx.fillText(w.short.toUpperCase(), 0, -20);
+    ctx.restore();
+  }
+
   // Shots in the air, in the pop-art ink.
   function drawShot(ctx, p, d) {
-    const smoky = p.type === "bazooka" || p.type === "cluster";
+    if (p.type === "flame") {
+      // a burning pistachio, flickering
+      const fl = 1 + Math.sin(S.frame * 0.7 + d.x) * 0.25;
+      ctx.save(); ctx.translate(d.x, d.y);
+      ctx.fillStyle = "rgba(255,138,42,.75)"; ell(ctx, 0, -3, 6 * fl, 8 * fl); ctx.fill();
+      ctx.fillStyle = "#ffd25a"; ell(ctx, 0, -1, 3.5, 4.5 * fl); ctx.fill();
+      ctx.fillStyle = "#9ccc4a"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1; ell(ctx, 0, 1, 3, 2.2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      if (Math.random() < 0.15) S.particles.push({ x: d.x, y: d.y - 6, vx: (Math.random() - 0.5) * 0.4, vy: -0.8, life: 18, color: "#ffb347", size: 1.6, g: 0 });
+      return;
+    }
+    const smoky = p.type === "bazooka" || p.type === "cluster" || p.type === "napalm" || p.type === "hbomb";
     if (smoky && S.frame % 2 === 0) S.particles.push({ x: d.x, y: d.y, vx: 0, vy: -0.3, life: 30, color: "rgba(220,220,230,.5)", size: 3, g: 0, smoke: true });
     ctx.save(); ctx.translate(d.x, d.y); ctx.scale(1.4, 1.4);
     ctx.strokeStyle = "#111"; ctx.lineWidth = 1.4;
@@ -886,6 +932,15 @@
       ctx.rotate(Math.atan2(p.vy, p.vx));
       ell(ctx, 0, 0, 9, 5.5); fill("#8a5a2b");
       ctx.lineWidth = 1; for (let i = -6; i <= 6; i += 3) { ctx.beginPath(); ctx.moveTo(i - 2, -4); ctx.lineTo(i + 1, 0); ctx.lineTo(i - 2, 4); ctx.stroke(); }
+    } else if (p.type === "napalm") {
+      ctx.rotate(Math.atan2(p.vy, p.vx));
+      ell(ctx, 0, 0, 8, 6); fill("#d8c39a");
+      ell(ctx, 1, 0, 5, 3.6); fill("#93c94a");
+    } else if (p.type === "hbomb") {
+      ctx.fillStyle = "rgba(255,215,0,.3)"; ell(ctx, 0, 0, 18, 18); ctx.fill();
+      ctx.rotate(spin);
+      ell(ctx, 0, 1, 10, 9); fill("#e8b923");
+      ell(ctx, 0, -7, 8, 4); fill("#a6791a");
     } else if (p.type === "pine") {
       ctx.rotate(spin); ell(ctx, 0, 0, 3.4, 2.3); fill("#d9b77a");
     } else if (p.type === "coconut") {
@@ -914,7 +969,7 @@
     S = {
       socket, room, myName: sessionStorage.getItem("myName"), page, cv, ctx: cv.getContext("2d"),
       terrain: null, map: null, hz: null, carved: 0, syncing: false, players: null, names: null, me: -1,
-      st: null, disp: [], fx: [], shotDisp: [], particles: [], popups: [], bursts: [], beams: [], shake: 0, frame: 0,
+      st: null, disp: [], fx: [], shotDisp: [], particles: [], popups: [], bursts: [], beams: [], shake: 0, flash: 0, frame: 0,
       keys: {}, dir: 0, drag: null, hover: null, aimSent: 0, raf: 0, fired: false, focus: null, panelRects: null,
       fresh: {}, trayHtml: "",
       cam: { x: W / 2, y: H / 2, z: ZMIN, zoom: ZSTART, overview: false },
