@@ -32,7 +32,7 @@
   const AIR_STEER_COST = 0.6;
   const STEP_UP = 7;                       // a walking squirrel climbs up to this many px
   const SIZE = 0.85;                       // squirrel drawing scale
-  const MIN_SQUIRRELS = 2, MAX_SQUIRRELS = 3;
+  const SQUIRRELS_PER_PLAYER = 1;          // every player is one toy squirrel
   const MIN_PLAYERS = 2, MAX_PLAYERS = 6;
   const SPAWN_GAP = 60;                    // px between two squirrels at the start
   const POWER_DRAG = 170;                  // a drag this long (canvas px) is full power
@@ -530,7 +530,7 @@
 
   return {
     SW, SH, K, W, H, WATER, G, FPS, TURN_SECONDS, MAX_STEPS, JUMP_COST, WALK_STEP, AIR_STEER_COST, STEP_UP,
-    SIZE, MIN_SQUIRRELS, MAX_SQUIRRELS, MIN_PLAYERS, MAX_PLAYERS, SPAWN_GAP, POWER_DRAG, MIN_DRAG,
+    SIZE, SQUIRRELS_PER_PLAYER, MIN_PLAYERS, MAX_PLAYERS, SPAWN_GAP, POWER_DRAG, MIN_DRAG,
     PLAYER_COLORS, SQUIRREL_NAMES, WEAPONS, WIND_PUSH, MAPS, OAK_GRASS,
     mulberry, oakGround, makeTerrain, solid, crater, dropY, standable, spawns, aimFromDrag, launch,
     ORDER, START, ROUND_UNLOCKS, PINE, RETREAT_SECONDS, MELEE_REACH, unlockedFor, lockText, blasterTrace, meleeVictims,

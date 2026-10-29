@@ -213,7 +213,7 @@
     onState(data);
     if (data.over) onOver(data.over);
     const who = S.players.map((p) => esc(p.name)).join(" vs ");
-    document.getElementById("sq-below").innerHTML = `Room ${esc(S.room.code)} · ${who} · ${S.perPlayer} squirrels each · ${esc(R.MAPS[S.map].name)}`;
+    document.getElementById("sq-below").innerHTML = `Room ${esc(S.room.code)} · ${who} · ${esc(R.MAPS[S.map].name)}`;
     document.getElementById("sq-below-hz").textContent = `${S.hz.icon} ${S.hz.name} kills · last player standing wins`;
   }
 

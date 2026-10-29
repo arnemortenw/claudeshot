@@ -181,7 +181,7 @@ io.on("connection", (socket) => {
       if (r.host === socket.id) {
         const total = Math.min(5, Math.max(1, parseInt(settings.rounds) || 1));
         // games read their own lobby options from here; what the room keeps
-        // (the squirrels map and count) wins over what the host's page sent
+        // (the squirrels map) wins over what the host's page sent
         r.settings = { ...settings, ...(r.lobby || {}) };
         activeRounds[r.code] = { current: 1, total, totalScores: {} };
         startGameRound(r);
@@ -201,8 +201,8 @@ io.on("connection", (socket) => {
     io.to(result.code).emit("room-updated", result);
   });
 
-  socket.on("squirrels-lobby", ({ code, map, squirrels } = {}) => {
-    const result = setSquirrelsLobby(String(code || "").toUpperCase(), socket.id, { map, squirrels });
+  socket.on("squirrels-lobby", ({ code, map } = {}) => {
+    const result = setSquirrelsLobby(String(code || "").toUpperCase(), socket.id, { map });
     if (result.error) {
       socket.emit("squirrels-lobby-error", result.error);
       return;

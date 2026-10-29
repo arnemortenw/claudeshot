@@ -65,8 +65,7 @@ class SquirrelsGame {
     this.finished = false;
     this.events = [];
 
-    const s = parseInt(room.settings && room.settings.squirrels, 10);
-    this.perPlayer = s === 3 ? 3 : 2;
+    this.perPlayer = R.SQUIRRELS_PER_PLAYER;
     const m = room.settings && room.settings.map;
     this.map = R.MAPS[m] ? m : "oak";
     this.hz = R.hazardOf(this.map);

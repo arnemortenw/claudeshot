@@ -90,13 +90,13 @@ test("spawns put 2 to 6 players with 2 or 3 squirrels each on dry ground, apart"
   }
 });
 
-test("a 6-player match with 3 squirrels each starts all 18 on dry ground", () => {
+test("a 6-player match starts one squirrel each, all on dry ground", () => {
   const { game } = makeGame(6, 3);
-  assert.equal(game.squirrels.length, 18);
+  assert.equal(game.perPlayer, 1, "an old squirrels setting is ignored");
+  assert.equal(game.squirrels.length, 6);
+  assert.deepEqual(game.squirrels.map((s) => s.p), [0, 1, 2, 3, 4, 5]);
   for (const s of game.squirrels) assert.ok(s.y < R.WATER - 30 && s.ground);
   assert.equal(new Set(game.players.map((p) => p.color)).size, 6);
-  const { game: two } = makeGame(2, "nonsense");
-  assert.equal(two.perPlayer, 2, "defaults to 2 squirrels each");
 });
 
 // ---------------------------------------------------------------- moving
@@ -158,14 +158,14 @@ function playTurn(game) {
   return t;
 }
 
-test("turns rotate players, squirrels within a player, and count rounds", () => {
+test("turns rotate players and count rounds", () => {
   const { game } = makeGame(3, 2);
   hello(game);
   const seen = [];
   for (let i = 0; i < 7; i++) seen.push(playTurn(game));
   assert.deepEqual(seen.map((t) => [t.cur, t.sq, t.round]), [
     [0, 0, 1], [1, 0, 1], [2, 0, 1],
-    [0, 1, 2], [1, 1, 2], [2, 1, 2],
+    [0, 0, 2], [1, 0, 2], [2, 0, 2],
     [0, 0, 3],
   ]);
 });
@@ -180,19 +180,17 @@ test("the turn ends at 30 seconds", () => {
   assert.equal(game.phase, "settle");
 });
 
-test("dead squirrels and dead players are skipped", () => {
+test("dead players are skipped", () => {
   const { game } = makeGame(3, 2);
   hello(game);
-  // player 0's first squirrel is dead: it plays its second one
-  game.squirrels.find((s) => s.p === 0 && s.n === 0).dead = true;
   // player 1 is out
   game.squirrels.filter((s) => s.p === 1).forEach((s) => { s.dead = true; });
   const seen = [];
   for (let i = 0; i < 5; i++) seen.push(playTurn(game));
-  assert.deepEqual(seen.map((t) => [t.cur, t.sq, t.round]), [
-    [0, 1, 1], [2, 0, 1],
-    [0, 1, 2], [2, 1, 2],
-    [0, 1, 3],
+  assert.deepEqual(seen.map((t) => [t.cur, t.round]), [
+    [0, 1], [2, 1],
+    [0, 2], [2, 2],
+    [0, 3],
   ]);
 });
 
@@ -287,7 +285,7 @@ test("a match logs its start, and its abandon when stopped early", () => {
   const start = JSON.parse(logs[0].replace("[squirrels] match start ", ""));
   assert.equal(start.room, "NUTS");
   assert.deepEqual(start.players, ["P1", "P2"]);
-  assert.equal(start.squirrels, 3);
+  assert.equal(start.squirrels, 1);
   assert.ok(!Number.isNaN(Date.parse(start.date)));
   const end = JSON.parse(logs[1].replace("[squirrels] match abandoned ", ""));
   assert.equal(end.winner, null);
@@ -393,12 +391,10 @@ test("a kill gives every player a Teleport, and teleporting keeps your attack", 
 });
 
 test("killing your own squirrel gives nobody a Teleport", () => {
-  const { game, s } = duel(300);
-  const mine = game.squirrels.find((q) => q.p === s.p && q !== s);
-  Object.assign(mine, { x: 470, hp: 5 });
-  game.setInput(me(game).id, { t: "weapon", w: "blaster" });
-  game.setInput(me(game).id, { t: "fire", ang: 0, pow: 0.5 });
-  assert.ok(mine.dead);
+  const { game, s } = duel(600);
+  s.hp = 5;
+  game.setInput(me(game).id, { t: "fire", ang: Math.PI / 2, pow: 0.3 });   // straight down at your own feet
+  assert.ok(stepUntil(game, () => s.dead, 300), "blew itself up");
   assert.equal(game.turnKills, 0);
 });
 

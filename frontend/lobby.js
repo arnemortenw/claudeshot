@@ -76,27 +76,9 @@ function renderGameSettings(game) {
   // Drey's Treehut is one 15-minute case per game: no rounds picker.
   if (game === "treehut") gameSettings.rounds = 1;
 
-  // Rabid Squirrels is one match to the last player standing: no rounds picker.
-  // The squirrels per player live on the room, like the map, so every lobby
-  // shows them; the buttons ask the server to change them.
-  if (game === "squirrels") {
-    const now = (currentRoom && currentRoom.lobby && currentRoom.lobby.squirrels) || 2;
-    gameSettings.rounds = 1;
-    container.innerHTML = `
-      <div class="round-picker">
-        <label class="label">Squirrels per player</label>
-        <div class="round-btns">
-          ${[2, 3].map(n =>
-            `<button class="round-btn${n === now ? " active" : ""}" data-squirrels="${n}">${n}</button>`
-          ).join("")}
-        </div>
-      </div>`;
-    container.querySelectorAll(".round-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        socket.emit("squirrels-lobby", { code: currentRoom.code, squirrels: parseInt(btn.dataset.squirrels) });
-      });
-    });
-  }
+  // Rabid Squirrels is one match to the last player standing, one squirrel
+  // each: no rounds picker. The map is picked in its own card below.
+  if (game === "squirrels") gameSettings.rounds = 1;
 
   if (game === "shooter") {
     gameSettings.rounds = 1;
@@ -283,7 +265,7 @@ function renderSquirrelsLobby(room) {
   document.querySelector(".lobby-container").classList.toggle("sq-wide", on);
   if (!on) return;
 
-  // the line under the players: map, squirrels each, turn length
+  // the line under the players: map, one squirrel each, turn length
   let info = document.getElementById("sq-info");
   if (!info) {
     info = document.createElement("p");
@@ -292,9 +274,7 @@ function renderSquirrelsLobby(room) {
     document.getElementById("player-list").after(info);
   }
   const map = SQ.MAPS[room.lobby.map] || SQ.MAPS.oak;
-  info.textContent = `Map: ${map.name} · ${room.lobby.squirrels} squirrels each · ${SQ.TURN_SECONDS}-second turns`;
-  document.querySelectorAll("#game-settings [data-squirrels]").forEach(b =>
-    b.classList.toggle("active", +b.dataset.squirrels === room.lobby.squirrels));
+  info.textContent = `Map: ${map.name} · one squirrel each · ${SQ.TURN_SECONDS}-second turns`;
 
   // toys: taken ones are greyed out with the owner's name, unless every toy
   // is taken, when a toy may be shared

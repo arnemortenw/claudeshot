@@ -44,12 +44,12 @@ test("Kid's Bedroom: lava between the furniture, and the blocks have no seams to
   assert.ok(R.solid(room, 1088 * R.K, 560 * R.K));
 });
 
-test("18 squirrels spawn on dry ground, above the hazard, on every map", () => {
+test("6 players spawn on dry ground, above the hazard, on every map, with room for 18", () => {
   for (const key of R.MAP_KEYS) {
     const mask = R.makeTerrain(key);
-    for (const seed of [1, 2, 3, 42, 99, 2026]) {
-      const sp = R.spawns(mask, 6, 3, seed);
-      assert.equal(sp.length, 18, key);
+    for (const [per, seed] of [1, 2, 3, 42, 99, 2026].flatMap((sd) => [[R.SQUIRRELS_PER_PLAYER, sd], [3, sd]])) {
+      const sp = R.spawns(mask, 6, per, seed);
+      assert.equal(sp.length, 6 * per, key);
       for (const s of sp) {
         assert.ok(s.y < R.WATER - 30, `${key} seed ${seed}: dry at ${s.x},${s.y}`);
         assert.ok(R.solid(mask, s.x, s.y + 1), `${key}: standing on something`);
@@ -71,10 +71,10 @@ function makeGame(settings, toys) {
 }
 
 test("the match plays the host's map and each player's toy", () => {
-  const g = makeGame({ map: "room", squirrels: 3 }, ["bo", "dino", "ranger"]);
+  const g = makeGame({ map: "room" }, ["bo", "dino", "ranger"]);
   assert.equal(g.map, "room");
   assert.deepEqual(g.mask, R.makeTerrain("room"));
-  assert.equal(g.squirrels.length, 9);
+  assert.equal(g.squirrels.length, 3, "one squirrel each");
   const init = g.snapshot(true);
   assert.equal(init.map, "room");
   assert.deepEqual(init.players.map((p) => p.toy), ["bo", "dino", "ranger"]);
@@ -112,7 +112,7 @@ test("every player joins with a toy of their own while there are free ones", () 
   const toys = room.players.map((p) => p.toy);
   assert.equal(new Set(toys).size, 4);
   for (const t of toys) assert.ok(R.isToy(t));
-  assert.deepEqual(room.lobby, { map: "oak", squirrels: 2 });
+  assert.deepEqual(room.lobby, { map: "oak" });
 });
 
 test("the server rejects a toy someone has already taken", () => {
@@ -151,13 +151,23 @@ test("only once every toy is taken may two players share one", () => {
   assert.ok(rooms.pickToy(room.code, extra.id, taken).error, "no sharing while a toy is free");
 });
 
-test("only the host picks the map and the squirrels per player", () => {
+test("only the host picks the map", () => {
   const room = squirrelsRoom(2);
   const [host, guest] = room.players.map((p) => p.id);
   assert.ok(rooms.setSquirrelsLobby(room.code, guest, { map: "yard" }).error);
   assert.equal(room.lobby.map, "oak");
-  assert.equal(rooms.setSquirrelsLobby(room.code, host, { map: "yard", squirrels: 3 }), room);
-  assert.deepEqual(room.lobby, { map: "yard", squirrels: 3 });
+  assert.equal(rooms.setSquirrelsLobby(room.code, host, { map: "yard" }), room);
+  assert.deepEqual(room.lobby, { map: "yard" });
   assert.ok(rooms.setSquirrelsLobby(room.code, host, { map: "moon" }).error);
-  assert.ok(rooms.setSquirrelsLobby(room.code, host, { squirrels: 7 }).error);
+});
+
+test("a room holds 6 players at most, however they arrive", () => {
+  const room = squirrelsRoom(6);
+  assert.equal(room.maxPlayers, 6);
+  assert.match(rooms.joinRoom(room.code, "late-1", "Late").error, /full/);
+  assert.match(rooms.rejoinRoom(room.code, "late-2", "Latecomer").error, /full/);
+  assert.equal(room.players.length, 6);
+  // someone already in the room can still come back on a new connection
+  assert.equal(rooms.rejoinRoom(room.code, "back-1", room.players[3].name), room);
+  assert.equal(room.players.length, 6);
 });

@@ -23,7 +23,7 @@ function createRoom(hostId, hostName, game, maxPlayers) {
   });
   const room = rooms.get(code);
   if (room.game === "squirrels") {
-    room.lobby = { map: "oak", squirrels: 2 };
+    room.lobby = { map: "oak" };
     giveToy(room, room.players[0]);
   }
   return room;
@@ -50,6 +50,8 @@ function rejoinRoom(code, newSocketId, playerName) {
     existing.id = newSocketId;
     if (wasHost) room.host = newSocketId;
   } else {
+    // someone new arriving this way still has to fit in the room
+    if (room.players.length >= room.maxPlayers) return { error: "Room is full." };
     room.players.push({ id: newSocketId, name: playerName });
     giveToy(room, room.players[room.players.length - 1]);
   }
@@ -114,22 +116,14 @@ function pickToy(code, playerId, key) {
   return room;
 }
 
-// The host's map and squirrels per player, kept on the room so every
-// player's lobby shows them.
-function setSquirrelsLobby(code, playerId, { map, squirrels } = {}) {
+// The host's map, kept on the room so every player's lobby shows it.
+function setSquirrelsLobby(code, playerId, { map } = {}) {
   const room = rooms.get(code);
   if (!room || room.game !== "squirrels") return { error: "Room not found." };
   if (room.host !== playerId) return { error: "Only the host picks the map." };
   if (room.gameStarted) return { error: "The match has started." };
-  if (map !== undefined) {
-    if (!SQ.MAPS[map]) return { error: "No such map." };
-    room.lobby.map = map;
-  }
-  if (squirrels !== undefined) {
-    const n = parseInt(squirrels, 10);
-    if (n < SQ.MIN_SQUIRRELS || n > SQ.MAX_SQUIRRELS) return { error: "2 or 3 squirrels each." };
-    room.lobby.squirrels = n;
-  }
+  if (!SQ.MAPS[map]) return { error: "No such map." };
+  room.lobby.map = map;
   return room;
 }
 
