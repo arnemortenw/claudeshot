@@ -309,11 +309,11 @@
       if (e.i === S.carved) { carve(e); S.carved++; }
       boomParticles(e.x, e.y, e.r);
       S.shake = Math.min(18, 6 + e.r / 4);
-      addBurst(e.x, e.y - 10, pickWord(BOOM_WORDS), "#f7c948", "#e94560");
+      addBurst(e.x, e.y, pickWord(BOOM_WORDS), "#f7c948", "#e94560", e.r);
     } else if (e.k === "pop") {
       S.popups.push({ x: e.x, y: e.y, text: e.text, color: e.color, size: e.size, life: 90 });
     } else if (e.k === "splash") {
-      if (e.big) addBurst(e.x, WATER - 70, pickWord(SPLASH_WORDS), "#4fc3f7", "#fffbe8");
+      if (e.big) addBurst(e.x, WATER, pickWord(SPLASH_WORDS), "#4fc3f7", "#fffbe8", 30);
       for (let i = 0; i < (e.big ? 24 : 12); i++) S.particles.push({ x: e.x, y: WATER, vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 6, life: 50, color: "#9fd3ea", size: 3, g: 0.25 });
     } else if (e.k === "banner") {
       showBanner(e.big, e.sub, e.color, e.ms);
@@ -324,8 +324,9 @@
   const BOOM_WORDS = ["WHAM!", "KA-BOOM!", "POW!", "BLAM!", "KRAK!", "THWACK!"];
   const SPLASH_WORDS = ["SPLOOSH!", "GLUB!", "SPLASH!"];
   const pickWord = (a) => a[Math.floor(Math.random() * a.length)];
-  function addBurst(x, y, word, fill, ring) {
-    S.bursts.push({ x, y, word, fill, ring, life: 100, rot: (Math.random() - 0.5) * 0.4, seed: Math.random() * 100 });
+  // x, y is the impact in world px; r how big it was. The burst goes beside it.
+  function addBurst(x, y, word, fill, ring, r = 40) {
+    S.bursts.push({ x, y, r, word, fill, ring, life: 100, rot: (Math.random() - 0.5) * 0.3, seed: Math.random() * 100 });
   }
   function star(ctx, r, spikes, jag, seed) {
     ctx.beginPath();
@@ -336,20 +337,54 @@
     }
     ctx.closePath();
   }
+  // The burst sits beside the impact, never on it, so everyone still sees the
+  // crater, the damage and who goes flying. Squirrels fly away from a blast, so
+  // it takes the side away from the nearest squirrel (or the side with more
+  // room), stays clear of the HUD at the top, and speed lines point at the hit.
+  function placeBurst(b, R) {
+    const ix = b.x * Z, iy = b.y * Z;
+    const clear = Math.max(80, b.r * Z * 1.6 + 40);       // keep this far from the impact
+    const fits = (cx) => cx - R >= 8 && cx + R <= SW - 8;
+    let side = ix < SW / 2 ? 1 : -1;
+    let near = null, nd = 160;
+    (S.st ? S.st.sq : []).forEach((q) => {
+      const d = Math.hypot(q.x - b.x, q.y - 20 - b.y);
+      if (!q.drowned && d < nd) { nd = d; near = q; }
+    });
+    if (near && Math.abs(near.x - b.x) > 2) side = near.x > b.x ? -1 : 1;
+    let cx = ix + side * (clear + R);
+    if (!fits(cx)) { side = -side; cx = ix + side * (clear + R); }
+    cx = Math.max(R + 8, Math.min(SW - R - 8, cx));
+    const cy = Math.max(120 + R * 0.72, Math.min(SH - 90 - R * 0.72, iy - 85));
+    return { cx, cy, ix, iy, side };
+  }
   function drawBurst(ctx, b) {
     b.life--;
     const t = 100 - b.life, k = t < 6 ? 0.4 + t * 0.12 : 1 + (t - 6) * 0.002;
     ctx.save();
+    ctx.font = `36px ${FONT}`;
+    const r = Math.max(56, ctx.measureText(b.word).width * 0.72), R = r * 1.15;
+    if (!b.at) b.at = placeBurst(b, R);
+    const { cx, cy, ix, iy } = b.at;
     ctx.globalAlpha = Math.max(0, Math.min(1, b.life / 15));
-    ctx.translate(b.x * Z, b.y * Z); ctx.rotate(b.rot); ctx.scale(k, k);
-    ctx.font = `44px ${FONT}`;
-    const r = Math.max(70, ctx.measureText(b.word).width * 0.75);
+    // speed lines from the burst towards the impact, stopping short of it
+    const dx = ix - cx, dy = iy - cy, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
+    const from = R * 0.95, to = d - Math.max(55, b.r * Z * 1.6 + 18);
+    if (to > from + 8) {
+      ctx.strokeStyle = "#111"; ctx.lineCap = "round";
+      [-14, 0, 14].forEach((off, i) => {
+        const px = -uy * off, py = ux * off, end = to - (i === 1 ? 0 : 12);
+        ctx.lineWidth = i === 1 ? 4 : 3;
+        ctx.beginPath(); ctx.moveTo(cx + ux * from + px, cy + uy * from + py); ctx.lineTo(cx + ux * end + px, cy + uy * end + py); ctx.stroke();
+      });
+    }
+    ctx.translate(cx, cy); ctx.rotate(b.rot); ctx.scale(k, k);
     ctx.lineJoin = "miter";
     star(ctx, r * 1.15, 14, 0.7, b.seed); ctx.fillStyle = b.ring; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = "#111"; ctx.stroke();
     star(ctx, r * 0.9, 12, 0.72, b.seed + 3); ctx.fillStyle = b.fill; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = "#111"; ctx.fillText(b.word, 4, 6);
-    ctx.lineWidth = 7; ctx.lineJoin = "round"; ctx.strokeText(b.word, 0, 2);
+    ctx.fillStyle = "#111"; ctx.fillText(b.word, 3, 5);
+    ctx.lineWidth = 6; ctx.lineJoin = "round"; ctx.strokeText(b.word, 0, 2);
     ctx.fillStyle = "#fff"; ctx.fillText(b.word, 0, 2);
     ctx.restore();
     ctx.textBaseline = "alphabetic";
