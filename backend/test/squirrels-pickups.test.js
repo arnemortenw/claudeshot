@@ -41,6 +41,7 @@ test("every map has a Napalm and an H-Bomb crate, resting on solid ground above 
     oak: { napalm: [620, 360], hbomb: [588, 60] },
     yard: { napalm: [945, 400], hbomb: [1150, 100] },
     room: { napalm: [215, 370], hbomb: [1122, 100] },
+    ark: { napalm: [210, 515], hbomb: [735, 60] },
   };
   for (const map of R.MAP_KEYS) {
     const game = makeGame(6, map);

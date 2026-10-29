@@ -500,7 +500,7 @@ input::placeholder {
 .sq-toy:disabled { cursor: default; opacity: .55; filter: grayscale(.8); }
 .sq-toy .taken { position: absolute; top: 8px; right: 8px; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   background: var(--red); color: #fff; font-size: .62rem; font-weight: 900; padding: 2px 7px; border-radius: 6px; letter-spacing: .5px; }
-.sq-maps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+.sq-maps { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
 .sq-map { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem 0.5rem 0.75rem; background: rgba(255,255,255,.04);
   border: 3px solid rgba(255,255,255,.08); border-radius: 14px; color: var(--text); font: inherit; cursor: pointer; text-align: left;
   transition: transform .12s, border-color .15s; }
@@ -512,6 +512,8 @@ input::placeholder {
 .sq-map .hz { margin-left: auto; font-size: .66rem; font-weight: 800; color: var(--muted); }
 .sq-map .mblurb { font-size: .74rem; color: var(--muted); padding: 0 0.25rem; line-height: 1.3; }
 .sq-map.on { border-color: var(--yellow); background: rgba(247,201,72,.08); }
+.sq-map { position: relative; }
+.sq-map .newtag { position: absolute; top: 14px; left: 14px; background: var(--red); color: #fff; font-size: .6rem; font-weight: 900; padding: 2px 7px; border-radius: 6px; letter-spacing: .5px; }
 .sq-howto { list-style: none; display: flex; flex-direction: column; gap: 0.8rem; }
 .sq-howto li { display: flex; gap: 0.8rem; align-items: flex-start; font-size: 0.9rem; line-height: 1.35; }
 .sq-howto .ico { font-size: 1.4rem; width: 2rem; text-align: center; flex-shrink: 0; }

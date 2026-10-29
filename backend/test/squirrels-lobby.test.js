@@ -1,4 +1,4 @@
-// Rabid Squirrels #20: the three maps, and the toys and map picked in the lobby.
+// Rabid Squirrels #20: the maps, and the toys and map picked in the lobby.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const R = require("../../frontend/games/squirrels-rules.js");
@@ -9,7 +9,7 @@ const io = { to: () => ({ emit() {} }) };
 
 // ---------------------------------------------------------------- maps
 test("every map generates, the same every time, with its own hazard", () => {
-  assert.deepEqual(R.MAP_KEYS, ["oak", "yard", "room"]);
+  assert.deepEqual(R.MAP_KEYS, ["oak", "yard", "room", "ark"]);
   const hazards = new Set();
   for (const key of R.MAP_KEYS) {
     const mask = R.makeTerrain(key);
@@ -21,7 +21,7 @@ test("every map generates, the same every time, with its own hazard", () => {
     assert.ok(hz.lines.length && hz.splash && hz.plop, `${key} has splash and lines`);
     hazards.add(R.MAPS[key].hazard);
   }
-  assert.deepEqual([...hazards].sort(), ["lava", "pool", "river"]);
+  assert.deepEqual([...hazards].sort(), ["lava", "pool", "river", "shredder"]);
   assert.throws(() => R.makeTerrain("moon"), /unknown map/);
 });
 

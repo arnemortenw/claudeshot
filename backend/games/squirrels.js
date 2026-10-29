@@ -84,7 +84,7 @@ class SquirrelsGame {
     // the crates come to rest before anyone moves, and nobody starts on one
     this.pickups = R.pickupsOf(this.map).map((pk) => ({ ...pk, taken: false }));
     for (let k = 0; k < R.H && this.pickups.some((pk) => !pk.taken && !this.solid(pk.x, pk.y + 1)); k++) this.stepPickups(false);
-    this.squirrels = R.spawns(this.mask, this.players.length, this.perPlayer, this.seed, this.pickups)
+    this.squirrels = R.spawns(this.mask, this.players.length, this.perPlayer, this.seed, this.pickups, R.noSpawnOf(this.map))
       .sort((a, b) => a.player - b.player || a.index - b.index)
       .map((sp, i) => ({
         i, p: sp.player, n: sp.index, name: R.SQUIRREL_NAMES[sp.player][sp.index],
