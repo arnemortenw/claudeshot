@@ -224,10 +224,15 @@
   .sq-banner .big{display:inline-block;font-size:5rem;line-height:1;padding:.15em .45em .05em;background:#fffbe8 radial-gradient(rgba(233,69,96,.35) 2px,transparent 2.4px) 0 0/10px 10px;border:5px solid #111;box-shadow:8px 8px 0 #111;-webkit-text-stroke:3px #111;paint-order:stroke fill;text-shadow:4px 4px 0 #111;}
   .sq-banner .sub{display:inline-block;font-size:1.5rem;margin-top:.7rem;background:#111;color:#fff;padding:.15rem .7rem;transform:rotate(3deg);}
   .sq-how{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:1.05rem;background:#111;color:#fff;padding:.2rem .8rem;white-space:nowrap;border:2px solid #fff;}
-  .sq-keys{position:absolute;bottom:12px;left:12px;font-size:.95rem;color:#111;line-height:1.15;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:.3rem .55rem;}
+  .sq-keys{position:absolute;top:12px;left:12px;font-size:.82rem;color:#111;line-height:1.15;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:.3rem .55rem;}
   .sq-end{position:absolute;right:14px;bottom:14px;pointer-events:auto;background:#e94560;color:#fff;border:3px solid #111;border-radius:3px;font:inherit;font-size:1.45rem;letter-spacing:.05em;padding:.25rem .9rem .1rem;cursor:pointer;box-shadow:4px 4px 0 #111;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
   .sq-end:hover{transform:rotate(-2deg) scale(1.06);}
   .sq-end:active{transform:rotate(-2deg) translate(3px,3px);box-shadow:1px 1px 0 #111;}
+  .sq-reconnect{position:absolute;inset:0;z-index:5;display:none;place-items:center;background:rgba(10,12,30,.55);pointer-events:auto;}
+  .sq-reconnect.show{display:grid;}
+  .sq-reconnect div{text-align:center;color:#111;background:#fffbe8;border:5px solid #111;box-shadow:8px 8px 0 #111;padding:.6rem 1.4rem .4rem;transform:rotate(-3deg);}
+  .sq-reconnect big{display:block;font-size:3.4rem;line-height:1;color:#4fc3f7;-webkit-text-stroke:3px #111;paint-order:stroke fill;text-shadow:4px 4px 0 #111;}
+  .sq-reconnect small{display:block;font-size:1.2rem;margin-top:.3rem;}
   .sq-below{display:flex;justify-content:space-between;color:#c9d1dd;font-size:1.05rem;margin-top:.7rem;}
   `;
 
@@ -253,10 +258,11 @@
           </div>
           <div class="sq-watch" id="sq-watch"></div>
           <div class="sq-banner" id="sq-banner"><div class="big" id="sq-banner-big"></div><div class="sub" id="sq-banner-sub"></div></div>
-          <div class="sq-keys">← → walk · Space jump (← → steers)<br>Drag back to aim · Enter end turn</div>
+          <div class="sq-keys">← → walk · Space jump<br>Drag to aim · Enter ends turn</div>
           <div class="sq-how" id="sq-how">${R.WEAPONS.bazooka.icon} ${R.WEAPONS.bazooka.how}</div>
           <button class="sq-end" id="sq-end" style="display:none">End turn ⏎</button>
         </div>
+        <div class="sq-reconnect" id="sq-reconnect"><div><big>RECONNECTING…</big><small id="sq-reconnect-sub"></small></div></div>
       </div>
       <div class="sq-below"><span id="sq-below">Room ${esc(room.code)} · Moonlit Oak</span><span>🌊 The river kills · last player standing wins</span></div>`;
     area.appendChild(wrap);
@@ -409,6 +415,20 @@
       : st.ph === "flight" ? "Incoming!" : "";
     $("sq-watch").textContent = msg;
     $("sq-watch").classList.toggle("show", !!msg);
+  }
+
+  // A lost connection covers the stage until socket.io is back; game.js then
+  // rejoins the room and the match is drawn afresh from the server.
+  function setReconnecting(on) {
+    const box = document.getElementById("sq-reconnect");
+    if (!box) return;
+    if (on) {
+      document.getElementById("sq-reconnect-sub").textContent = myTurn() ? "Hang on, your turn is waiting" : "Hang on, getting you back in";
+      S.keys = {};
+      S.drag = null;
+      S.dir = 0;
+    }
+    box.classList.toggle("show", on);
   }
 
   let bannerTimer = null;
@@ -635,10 +655,14 @@
       init: onInit, state: onState, over: onOver,
       keydown: onKeyDown, keyup: onKeyUp, blur: onBlur,
       end: () => { if (myTurn()) send({ t: "end" }); },
+      disconnect: () => setReconnecting(true),
+      connect: () => setReconnecting(false),
     };
     socket.on("squirrels-init", S.handlers.init);
     socket.on("squirrels-state", S.handlers.state);
     socket.on("squirrels-over", S.handlers.over);
+    socket.on("disconnect", S.handlers.disconnect);
+    socket.on("connect", S.handlers.connect);
     window.addEventListener("keydown", S.handlers.keydown);
     window.addEventListener("keyup", S.handlers.keyup);
     window.addEventListener("blur", S.handlers.blur);
@@ -659,6 +683,8 @@
     S.socket.off("squirrels-init", S.handlers.init);
     S.socket.off("squirrels-state", S.handlers.state);
     S.socket.off("squirrels-over", S.handlers.over);
+    S.socket.off("disconnect", S.handlers.disconnect);
+    S.socket.off("connect", S.handlers.connect);
     window.removeEventListener("keydown", S.handlers.keydown);
     window.removeEventListener("keyup", S.handlers.keyup);
     window.removeEventListener("blur", S.handlers.blur);
