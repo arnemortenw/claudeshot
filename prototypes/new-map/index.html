@@ -159,10 +159,12 @@ body {
   <div class="page-center"><div class="sheet">
     <h1>ARK NYÅPNING <span class="boo">— THE ENEMY'S STORE</span></h1>
     <p class="intro">The fourth map. The squirrels have broken into the <b>ARK bookstore</b> on its opening day: sale tables, the <b>−40%</b> signs, the 10-kroner shelf, two columns of yellow balloons and the red carpet. The <b>ARK sign</b> hangs from the ceiling and glares at whoever's turn it is. It's terrain like everything else, so you can blow it apart. The hazard is the <b>returns shredder</b> under the floor.</p>
+    <p class="intro"><b>v2: solid vs background.</b> Everything solid has a <b>thick black outline</b> and casts a shadow, in full colour. The back wall, the bookshelves behind and the card wall are <b>faded, cooler and soft</b>, so shots and squirrels pass in front of them. The holes you hide in (under the tables, inside the 10-kroner shelf) are <b>dark</b>. Press <b>Hide background</b> to see only what is solid.</p>
     <div class="controls">
       <button class="cbtn on" id="ov-btn">Show cover &amp; pickups</button>
+      <button class="cbtn" id="bg-btn">Hide background</button>
       <button class="cbtn" id="sheet-reset">Fix the store</button>
-      <span class="hint">Click the map to drop an Acorn Bazooka hit there. Everything you see is solid and can be blown up. Try the sign.</span>
+      <span class="hint">Click the map to drop an Acorn Bazooka hit there. Anything with a black outline is solid and can be blown up. Try the sign.</span>
     </div>
     <div class="sq-stage"><canvas id="sheet-cv" width="1200" height="640"></canvas></div>
     <div class="legend">
@@ -290,8 +292,27 @@ function paintBg(b) {
   // down the holes in the floor: the dark shaft to the shredder
   b.fillStyle = "#1b1b1f"; b.fillRect(0, 548, SW, SH - 548);
   b.fillStyle = "#2c2c33"; for (let y = 556; y < SH; y += 12) b.fillRect(0, y, SW, 3);
+  // v2: the background sits far back: washed out, cooler and a little soft, so
+  // only the inked terrain in front reads as something you can stand on
+  const flat = mk(SW, SH); flat.getContext("2d").drawImage(b.canvas, 0, 0);
+  b.clearRect(0, 0, SW, SH); b.filter = "saturate(.35) brightness(.72) contrast(.8) blur(1.2px)"; b.drawImage(flat, 0, 0); b.filter = "none";
+  b.fillStyle = "rgba(40,52,80,.28)"; b.fillRect(0, 0, SW, SH);
+  // the hollows behind the cover are in deep shadow, so the hiding spots read as holes
+  b.fillStyle = "rgba(10,10,20,.62)";
+  [[116, 500, 188, 48], [896, 514, 158, 34], [552, 260, 156, 288]].forEach(([x, y, w, h]) => b.fillRect(x, y, w, h));
   // pop-art halftone, denser towards the top
   for (let y = 4; y < SH; y += 8) for (let x = (y / 8) % 2 ? 4 : 0; x < SW; x += 8) { b.fillStyle = `rgba(0,0,0,${0.035 * (1 - y / SH)})`; b.beginPath(); b.arc(x, y, 1.6, 0, 7); b.fill(); }
+}
+
+// v2: everything solid gets a thick black ink outline and a drop shadow onto
+// the background, like the toys. Rebuilt whenever the terrain changes.
+function inkOf(ter) {
+  const ink = mk(SW, SH), k = ink.getContext("2d");
+  for (let a = 0; a < 16; a++) { const ang = a * Math.PI / 8; k.drawImage(ter, Math.cos(ang) * 3.5, Math.sin(ang) * 3.5); }
+  k.globalCompositeOperation = "source-in"; k.fillStyle = "#111"; k.fillRect(0, 0, SW, SH);
+  const out = mk(SW, SH), o = out.getContext("2d");
+  o.globalAlpha = 0.45; o.drawImage(ink, 7, 8); o.globalAlpha = 1; o.drawImage(ink, 0, 0);
+  return out;
 }
 
 function saleSkirt(c, x, y, w, h) {
@@ -395,7 +416,7 @@ function makeWorld(cv, opts = {}) {
   const ter = mk(SW, SH), tc = ter.getContext("2d", { willReadFrequently: true });
   let mask;
   const W = { cv, ctx, ter, tc, sq: [], parts: [], pops: [], proj: null, bubble: null, shake: 0, frame: 0, overlay: !!opts.overlay, picks: { napalm: true, hbomb: true }, onShred: null, onSign: null, active: 0 };
-  W.reset = () => { tc.clearRect(0, 0, SW, SH); paintTerrain(tc); mask = tc.getImageData(0, 0, SW, SH).data; W.sign0 = W.signPx(); W.parts = []; W.pops = []; W.proj = null; W.picks = { napalm: true, hbomb: true }; };
+  W.reset = () => { tc.clearRect(0, 0, SW, SH); paintTerrain(tc); mask = tc.getImageData(0, 0, SW, SH).data; W.ink = inkOf(ter); W.sign0 = W.signPx(); W.parts = []; W.pops = []; W.proj = null; W.picks = { napalm: true, hbomb: true }; };
   W.solid = (x, y) => { x |= 0; y |= 0; if (x < 0 || x >= SW || y < 0) return false; if (y >= SH) return false; return mask[(y * SW + x) * 4 + 3] > 40; };
   W.dropY = (x, y = 0) => { while (y < SH && !W.solid(x, y)) y++; return y; };
   W.logoAlive = () => { const [lx, ly] = SIGN.logo; let n = 0; for (let dx = -12; dx <= 12; dx += 6) for (let dy = -12; dy <= 12; dy += 6) n += W.solid(lx + dx, ly + dy); return n > 12; };
@@ -406,7 +427,7 @@ function makeWorld(cv, opts = {}) {
     tc.save(); tc.globalCompositeOperation = "destination-out"; tc.beginPath(); tc.arc(x, y, rad, 0, PI2); tc.fill(); tc.restore();
     // a scorched rim, like the other maps
     tc.save(); tc.globalCompositeOperation = "source-atop"; tc.strokeStyle = "rgba(40,20,10,.55)"; tc.lineWidth = 5; tc.beginPath(); tc.arc(x, y, rad + 2, 0, PI2); tc.stroke(); tc.restore();
-    mask = tc.getImageData(0, 0, SW, SH).data;
+    mask = tc.getImageData(0, 0, SW, SH).data; W.ink = inkOf(ter);
     for (let i = 0; i < 26; i++) { const a = Math.random() * PI2, s = 2 + Math.random() * 5; W.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2, life: 40, col: ["#ffd400", "#ff6a13", "#fff", "#c8102e"][i % 4] }); }
     W.pops.push({ x, y: y - 20, text: ["KA-BLAM!", "POW!", "KRAK!"][(Math.random() * 3) | 0], life: 45, big: true });
     W.shake = 10;
@@ -442,7 +463,7 @@ function makeWorld(cv, opts = {}) {
 
     const c = ctx; c.save();
     if (W.shake > 0) { c.translate((Math.random() - .5) * W.shake, (Math.random() - .5) * W.shake); W.shake *= 0.85; if (W.shake < .5) W.shake = 0; }
-    c.drawImage(bg, 0, 0); paintHazard(c, t); c.drawImage(ter, 0, 0);
+    if (W.noBg) { c.fillStyle = "#3a3f4a"; c.fillRect(0, 0, SW, SH); } else c.drawImage(bg, 0, 0); paintHazard(c, t); c.drawImage(W.ink, 0, 0); c.drawImage(ter, 0, 0);
     if (W.overlay) drawOverlay(c, W);
     // the pickups, bobbing
     ["napalm", "hbomb"].forEach((k) => { if (!W.picks[k]) return; const [px, py0] = pk[k], py = W.dropY(px, py0) - 12 + Math.sin(t / 12) * 2; drawPickup(c, px, py, k); });
@@ -538,6 +559,7 @@ sheet.place([{ x: 200, from: 380, col: "#f7c948", name: "Bucky" }, { x: 630, fro
 sheet.active = 3;
 let ti = 0; setInterval(() => { if (document.getElementById("screen-sheet").classList.contains("on")) { sheet.active = (sheet.active + 1) % 4; sheet.say(TAUNTS[ti++ % TAUNTS.length]); } }, 3500);
 sheet.say(TAUNTS[4]);
+document.getElementById("bg-btn").onclick = (e) => { sheet.noBg = !sheet.noBg; e.target.classList.toggle("on", sheet.noBg); };
 document.getElementById("ov-btn").onclick = (e) => { sheet.overlay = !sheet.overlay; e.target.classList.toggle("on", sheet.overlay); };
 document.getElementById("sheet-reset").onclick = () => { sheet.reset(); sheet.place(sheet.sq.map((s, i) => ({ ...[{ x: 200, from: 380 }, { x: 630, from: 270 }, { x: 940, from: 300 }, { x: 760, from: 300 }][i], col: s.col, name: s.name }))); };
 
@@ -554,7 +576,7 @@ function stubThumb(c, m) {
   c.fillStyle = m.water; c.fillRect(0, HZ, SW, SH - HZ);
 }
 function arkThumb(c) {
-  const t = mk(SW, SH), tc = t.getContext("2d"); paintBg(c); paintTerrain(tc); c.drawImage(t, 0, 0); paintHazard(c, 0);
+  const t = mk(SW, SH), tc = t.getContext("2d"); paintBg(c); paintTerrain(tc); paintHazard(c, 0); c.drawImage(inkOf(t), 0, 0); c.drawImage(t, 0, 0);
   // the glare, so the thumbnail already looks back at you
   const [lx, ly] = SIGN.logo; [-12, 12].forEach((dx) => { c.fillStyle = "#fff"; ell(c, lx + dx, ly - 2, 8, 9); c.fill(); c.fillStyle = "#111"; ell(c, lx + dx, ly + 2, 3.5, 3.5); c.fill(); });
 }
