@@ -544,7 +544,7 @@ test("End turn ends the retreat at once", () => {
   const cur = game.cur;
   game.setInput(me(game).id, { t: "end" });
   assert.ok(!game.retreating());
-  assert.ok(stepUntil(game, () => game.cur !== cur, 70));
+  assert.ok(stepUntil(game, () => game.cur !== cur, Math.round(2.5 * R.FPS) + 40));
 });
 
 test("running out of steps ends the retreat", () => {
@@ -572,10 +572,9 @@ test("after the blast settles the turn waits 2.5 seconds before the next squirre
   const { game } = makeGame();
   hello(game);
   toAim(game);
-  const turn = game.turnNo;
   game.endTurn();                                   // no shot: settles at once
   let still = 0;
   while (game.phase === "settle" && still < 600) { game.step(); still++; }
   assert.ok(still >= 2.5 * R.FPS, `held ${still} frames`);
-  assert.notEqual(game.turnNo === turn && game.phase === "settle", true);
+  assert.notEqual(game.phase, "settle");
 });
