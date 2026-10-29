@@ -582,9 +582,11 @@
     if (st.shot && S.shotDisp) { S.shotDisp.x += (st.shot.x - S.shotDisp.x) * 0.5; S.shotDisp.y += (st.shot.y - S.shotDisp.y) * 0.5; }
     // blinks and twitches, now and then, for each squirrel on this laptop
     st.sq.forEach((q, i) => {
-      const f = S.fx[i] || (S.fx[i] = { blink: 0, twitch: 0 });
+      const f = S.fx[i] || (S.fx[i] = { blink: 0, twitch: 0, pop: 0, hp: q.hp });
       if (Math.random() < 0.006) f.blink = 8; else if (f.blink > 0) f.blink--;
       if (Math.random() < 0.02) f.twitch = 8; else if (f.twitch > 0) f.twitch--;
+      if (q.hp < f.hp) f.pop = 40; else if (f.pop > 0) f.pop--;   // a hit: Mr. Nut Head's parts fly off
+      f.hp = q.hp;
     });
     updateCam();
 
@@ -614,6 +616,7 @@
       if (q.dead) A.drawGrave(ctx, color);
       else A.drawToy(ctx, A.toyFor(slot), {
         color, face: q.face, t: S.frame + i * 17, blink: f.blink > 0, twitch: f.twitch > 0,
+        pop: f.pop > 0 ? Math.sin((1 - f.pop / 40) * Math.PI) : 0,
         bob: i === st.act && st.ph !== "over" ? Math.sin(S.frame / 6) * 0.8 : 0,
       });
       ctx.restore();

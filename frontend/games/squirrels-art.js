@@ -12,9 +12,12 @@
     ranger:  { name: "Space Ranger Nutz", fur: "#a9a39b", furDark: "#6f6a64", muzzle: "#ebe5dc", outfit: "#f5f6fa", outfit2: "#7bc043", iris: "#2f7ad8" },
     dino:    { name: "Rexie Nutkin", fur: "#c97b3d", furDark: "#8e4f22", muzzle: "#f3d3a4", outfit: "#69c04a", outfit2: "#c7e86b", iris: "#2f6a2f" },
     bo:      { name: "Bo Squeak", fur: "#d68f55", furDark: "#9a5a2c", muzzle: "#f7dcb5", outfit: "#8cbcec", outfit2: "#f7a8c8", iris: "#7a3e8e" },
+    // #21: the toys for players 5 and 6
+    pig:     { name: "Porky Nutbank", fur: "#a86a3c", furDark: "#74431f", muzzle: "#f0cfa0", outfit: "#ff7eb6", outfit2: "#ffd23f", iris: "#c2185b", trim: "#a8326a" },
+    spud:    { name: "Mr. Nut Head", fur: "#9a9088", furDark: "#655d57", muzzle: "#e9e1d6", outfit: "#d9ae6c", outfit2: "#3a8bfd", iris: "#2f7ad8", trim: "#a77c45" },
   };
-  // Until the lobby pick lands, each player slot gets a toy; slots 5 and 6 repeat.
-  const SLOT_TOYS = ["sheriff", "ranger", "dino", "bo", "sheriff", "ranger"];
+  // Until the lobby pick lands, each player slot gets its own toy.
+  const SLOT_TOYS = ["sheriff", "ranger", "dino", "bo", "pig", "spud"];
   const toyFor = (slot) => SLOT_TOYS[slot % SLOT_TOYS.length];
 
   const INK = "#111", LW = 1.7;
@@ -41,7 +44,7 @@
     c.fillStyle = "rgba(255,255,255,.45)"; ell(c, -rx * 0.4, -1.4, rx * 0.3, 1.1); c.fill();
   }
 
-  // o: { color, face (1 or -1), t (frame), blink, twitch, bob }
+  // o: { color, face (1 or -1), t (frame), blink, twitch, bob, pop (0..1: Mr. Nut Head's parts fly off) }
   function drawToy(c, key, o) {
     const ch = TOYS[key] || TOYS.sheriff, t = o.t || 0;
     c.save();
@@ -58,7 +61,13 @@
     if (key === "dino") { for (let i = 0; i < 4; i++) { const a = -0.6 - i * 0.55, px = -16 + Math.cos(a) * 12, py = -36 + Math.sin(a) * 15; c.beginPath(); c.moveTo(px - 2.5, py + 1); c.lineTo(px - 4, py - 4); c.lineTo(px + 2, py - 1); c.closePath(); fs(c, "#f39c34"); } }
 
     // legs
-    rr(c, -3, -8, 6, 8, 2.5); fs(c, ch.furDark); rr(c, 5, -8, 6, 8, 2.5); fs(c, ch.furDark);
+    if (key === "pig") {
+      // trotters: pink legs with dark hooves
+      [-3, 5].forEach((x) => { rr(c, x, -8, 6, 8, 2.5); fs(c, ch.outfit); c.fillStyle = ch.trim; c.fillRect(x + 0.8, -2.6, 4.4, 2); });
+    } else if (key === "spud") {
+      rr(c, -3, -8, 6, 6, 2.5); fs(c, ch.furDark); rr(c, 5, -8, 6, 6, 2.5); fs(c, ch.furDark);
+      ell(c, 1, -2, 5.2, 3); fs(c, ch.outfit2); ell(c, 9.5, -2, 5.2, 3); fs(c, ch.outfit2);   // big plastic shoes
+    } else { rr(c, -3, -8, 6, 8, 2.5); fs(c, ch.furDark); rr(c, 5, -8, 6, 8, 2.5); fs(c, ch.furDark); }
     // body / outfit
     if (key === "bo") {
       c.beginPath(); c.moveTo(-5, -26); c.lineTo(-11, -2); c.quadraticCurveTo(3, 2, 17, -2); c.lineTo(11, -26); c.closePath(); fs(c, ch.outfit);
@@ -66,6 +75,18 @@
       c.strokeStyle = INK; c.lineWidth = LW;
       ell(c, 3, -24, 9, 6); fs(c, ch.outfit);
       c.fillStyle = ch.outfit2; rr(c, -5, -20, 16, 3.2, 1.5); c.fill();
+    } else if (key === "pig") {
+      // a round piggy-bank belly with a painted daisy, and a curly tail
+      c.lineWidth = 3.6; c.beginPath(); c.moveTo(-8, -19); c.bezierCurveTo(-15, -22, -16, -14, -12, -14); c.bezierCurveTo(-9, -14, -10, -18, -13, -17); c.stroke();
+      c.strokeStyle = ch.outfit; c.lineWidth = 1.8; c.stroke(); c.strokeStyle = INK; c.lineWidth = LW;
+      ell(c, 3, -17, 12.5, 12); fs(c, ch.outfit);
+      c.fillStyle = "rgba(255,255,255,.5)"; ell(c, -3, -23, 3, 1.8, -0.6); c.fill();
+      c.lineWidth = 1; for (let i = 0; i < 5; i++) { const a = i * 1.2566; ell(c, 6 + Math.cos(a) * 2.4, -14 + Math.sin(a) * 2.4, 1.7, 1.7); fs(c, "#fff"); }
+      ell(c, 6, -14, 1.4, 1.4); fs(c, ch.outfit2); c.lineWidth = LW;
+    } else if (key === "spud") {
+      // a lumpy potato body with peg holes
+      c.beginPath(); c.moveTo(3, -32); c.bezierCurveTo(14, -33, 16, -22, 14.5, -14); c.bezierCurveTo(13, -5, 8, -2.5, 2, -3); c.bezierCurveTo(-7, -3.5, -9.5, -11, -8.5, -19); c.bezierCurveTo(-7.5, -27, -4, -31.5, 3, -32); c.closePath(); fs(c, ch.outfit);
+      c.fillStyle = ch.trim; [[-3, -22, 1], [6, -10, 1.2], [9.5, -24, 0.8], [-4, -9, 0.9]].forEach(([x, y, r]) => { ell(c, x, y, r, r * 0.8); c.fill(); });
     } else {
       ell(c, 3, -18, 10.5, 12); fs(c, ch.outfit);
       c.save(); ell(c, 3, -18, 10.5, 12); c.clip();
@@ -89,9 +110,20 @@
       }
     }
     // paw
-    ell(c, 13.5, -19, 3.4, 2.6, 0.3); fs(c, ch.fur);
-    // ear
-    ell(c, 1.5, -50, 3.6, 6.8, -0.35); fs(c, ch.fur); ell(c, 1.8, -49.5, 1.6, 4, -0.35); c.fillStyle = "#e9a3a0"; c.fill();
+    ell(c, 13.5, -19, key === "spud" ? 3.9 : 3.4, key === "spud" ? 3 : 2.6, 0.3); fs(c, key === "spud" ? "#fff" : ch.fur);   // Mr. Nut Head wears a white glove
+    // ear (Porky's is under the hood)
+    if (key !== "pig") { ell(c, 1.5, -50, 3.6, 6.8, -0.35); fs(c, ch.fur); ell(c, 1.8, -49.5, 1.6, 4, -0.35); c.fillStyle = "#e9a3a0"; c.fill(); }
+    // Porky's pig hood: two pig ears, then the hood with a coin in its slot
+    if (key === "pig") {
+      c.beginPath(); c.moveTo(-5, -47); c.lineTo(-8, -59); c.lineTo(3, -53); c.closePath(); fs(c, ch.outfit);
+      c.beginPath(); c.moveTo(11, -53.5); c.lineTo(18, -61); c.lineTo(19.5, -49); c.closePath(); fs(c, ch.outfit);
+      c.fillStyle = ch.trim; c.beginPath(); c.moveTo(-4.5, -49); c.lineTo(-6.5, -56.5); c.lineTo(0.5, -52.5); c.closePath(); c.fill();
+      ell(c, 7, -40, 15, 14.5); fs(c, ch.outfit);
+      c.fillStyle = "rgba(255,255,255,.5)"; ell(c, -1, -49, 3.4, 2, -0.7); c.fill();
+      ell(c, 6.5, -57.2, 3.8, 3.8); fs(c, ch.outfit2);
+      c.lineWidth = 1; c.beginPath(); c.moveTo(6.5, -59.4); c.lineTo(6.5, -55.4); c.stroke(); c.lineWidth = LW;
+      c.save(); c.translate(6.5, -54.6); c.rotate(-0.04); rr(c, -5, -1.2, 10, 2.6, 1.2); c.fillStyle = INK; c.fill(); c.restore();
+    }
     // bonnet behind the head
     if (key === "bo") {
       ell(c, 6, -41, 16, 14.5); fs(c, ch.outfit2);
@@ -106,6 +138,17 @@
     c.lineWidth = 1.2; rr(c, 16.6, -30.6, 4.6, 5.2, 1.2); fs(c, "#fffdf4"); c.beginPath(); c.moveTo(18.9, -30.4); c.lineTo(18.9, -25.6); c.stroke();
     c.beginPath(); c.moveTo(12, -29.5); c.quadraticCurveTo(16, -27.5, 22, -30.5); c.stroke();
     c.lineWidth = LW;
+    const pop = o.pop || 0, popY = -pop * 16, popR = pop * 0.6;   // Mr. Nut Head's parts fly off when hit
+    if (key === "pig") {
+      ell(c, 21, -35.2, 4.6, 3.8); fs(c, ch.outfit);
+      c.fillStyle = ch.trim; ell(c, 19.6, -35.2, 0.9, 1.4); c.fill(); ell(c, 22.4, -35.2, 0.9, 1.4); c.fill();
+    }
+    if (key === "spud") {
+      c.save(); c.translate(pop * 6, -popY * 0.5); c.rotate(popR * 0.4);
+      c.beginPath(); c.moveTo(19.5, -33.5); c.bezierCurveTo(16, -35.5, 11.5, -33, 11.5, -29.5); c.bezierCurveTo(14, -31, 17, -30.5, 19.5, -31.5);
+      c.bezierCurveTo(22, -30.5, 25, -31, 27, -29.5); c.bezierCurveTo(27, -33, 23, -35.5, 19.5, -33.5); c.closePath(); fs(c, "#2a1a10");
+      c.restore();
+    }
     // eyes: big and bloodshot
     const look = o.twitch ? 1 : 0;
     if (o.blink) {
@@ -123,8 +166,22 @@
     // angry brows
     c.lineWidth = 2.6; c.beginPath(); c.moveTo(9.2, -49.2); c.lineTo(17.6, -46.4); c.moveTo(3, -48.4); c.lineTo(7.4, -47.6); c.stroke();
     c.lineWidth = LW;
+    if (key === "spud") {
+      c.save(); c.translate(-pop * 7, popY * 0.4); c.rotate(-popR);
+      ell(c, -4, -38, 4.2, 6.4, 0.15); fs(c, "#ff8fb1");
+      c.lineWidth = 1.2; c.beginPath(); c.arc(-3.6, -38, 2.6, -1.4, 1.4); c.stroke(); c.lineWidth = LW;
+      c.restore();
+    }
     // headwear
-    if (key === "sheriff") {
+    if (key === "spud") {
+      // a black bowler hat with a red band
+      c.save(); c.translate(pop * 3, popY); c.rotate(popR);
+      c.beginPath(); c.moveTo(-0.5, -50); c.bezierCurveTo(-1.5, -64, 17.5, -64, 16.5, -50); c.closePath(); fs(c, "#2a2a33");
+      c.fillStyle = "#e94560"; c.fillRect(-0.6, -53.4, 17.2, 2.8);
+      ell(c, 8, -49.6, 15, 3.2, -0.06); fs(c, "#2a2a33");
+      c.fillStyle = "rgba(255,255,255,.5)"; ell(c, 3.5, -59, 2.6, 1.4, -0.5); c.fill();
+      c.restore();
+    } else if (key === "sheriff") {
       c.beginPath(); c.moveTo(-1, -49); c.quadraticCurveTo(-2.5, -62, 3, -62); c.quadraticCurveTo(8, -57.5, 13, -62); c.quadraticCurveTo(18.5, -62, 17, -49); c.closePath(); fs(c, "#a3692f");
       c.fillStyle = "#5a3517"; c.fillRect(-1.3, -52.5, 18.3, 3);
       ell(c, 8, -48.6, 17.5, 3.8, -0.06); fs(c, "#8f5a27");
@@ -178,5 +235,7 @@
     c.lineWidth = 2; c.strokeStyle = INK; c.beginPath(); c.arc(s / 2, s / 2, s / 2 - 1.5, 0, Math.PI * 2); c.stroke();
   }
 
+  if (typeof module !== "undefined") module.exports = { TOYS, SLOT_TOYS, toyFor };
+  if (typeof window === "undefined") return;
   window.SQUIRRELS_ART = { TOYS, SLOT_TOYS, toyFor, drawToy, drawGrave, drawToyHead, mix };
 })();

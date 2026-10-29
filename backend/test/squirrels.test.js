@@ -294,3 +294,15 @@ test("a match logs its start, and its abandon when stopped early", () => {
   game.stop();
   assert.equal(logs.length, 2, "logged once");
 });
+
+// ---------------------------------------------------------------- toys
+test("there are six toys, and each of the six player slots gets a different one", () => {
+  const ART = require("../../frontend/games/squirrels-art.js");
+  const ids = Object.keys(ART.TOYS);
+  assert.equal(ids.length, 6);
+  assert.equal(new Set(ids).size, 6);
+  const slots = Array.from({ length: 6 }, (_, i) => ART.toyFor(i));
+  assert.equal(new Set(slots).size, 6);
+  slots.forEach((k) => assert.ok(ART.TOYS[k], `unknown toy ${k}`));
+  assert.ok(ids.includes("pig") && ids.includes("spud"));
+});
