@@ -46,7 +46,6 @@ const LINES = {
   hit: ["MY TAIL!", "Rabies!", "SKREEE!", "Worth it.", "Ow, my nuts", "Again!"],
   self: ["Oops.", "Meant that.", "Friendly fire!"],
   death: ["I regret nothing!", "Tell my acorns I loved them…", "Hide the nuts…", "SQUEEEEE—"],
-  drown: ["glub glub", "Can't… swim…", "Squirrels float, right?"],
   timeout: ["got distracted by a nut.", "forgot what a bazooka is.", "is busy foaming."],
 };
 
@@ -68,10 +67,13 @@ class SquirrelsGame {
 
     const s = parseInt(room.settings && room.settings.squirrels, 10);
     this.perPlayer = s === 3 ? 3 : 2;
-    this.map = "oak";
+    const m = room.settings && room.settings.map;
+    this.map = R.MAPS[m] ? m : "oak";
+    this.hz = R.hazardOf(this.map);
 
     this.players = room.players.slice(0, R.MAX_PLAYERS).map((p, i) => ({
       slot: i, uid: "p" + (i + 1), id: p.id, name: p.name,
+      toy: R.isToy(p.toy) ? p.toy : R.TOYS[i % R.TOYS.length].key,
       color: R.PLAYER_COLORS[i], next: 0, outAt: null, dealt: 0, ready: false,
       weapon: "bazooka", teleports: 0,
     }));
@@ -115,7 +117,7 @@ class SquirrelsGame {
   start() {
     this.log(`[squirrels] match start ${JSON.stringify({
       room: this.room.code, date: new Date().toISOString(),
-      players: this.players.map((p) => p.name), squirrels: this.perPlayer, map: this.map,
+      players: this.players.map((p) => p.name), toys: this.players.map((p) => p.toy), squirrels: this.perPlayer, map: this.map,
     })}`);
     let last = Date.now(), acc = 0, n = 0;
     this.timer = setInterval(() => {
@@ -615,7 +617,7 @@ class SquirrelsGame {
     if (p.y > R.WATER) {
       this.removeShot(p);
       this.emitEvent({ k: "splash", x: r1(p.x), big: false });
-      this.pop(p.x, R.WATER - 30, "plop.", "#9fd3ea", 14);
+      this.pop(p.x, R.WATER - 30, this.hz.plop, this.hz.splash, 14);
     } else if (p.x < -300 || p.x > R.W + 300) {
       this.removeShot(p);
     }
@@ -677,7 +679,7 @@ class SquirrelsGame {
     if (!s.dead) {
       s.hp = 0;
       this.kill(s);
-      this.pop(s.x, R.WATER - 50, pick(LINES.drown, this.rnd), this.players[s.p].color, 15);
+      this.pop(s.x, R.WATER - 50, pick(this.hz.lines, this.rnd), this.players[s.p].color, 15);
     }
   }
 
@@ -713,7 +715,7 @@ class SquirrelsGame {
     if (full) {
       out.map = this.map;
       out.perPlayer = this.perPlayer;
-      out.players = this.players.map((p) => ({ slot: p.slot, uid: p.uid, id: p.id, name: p.name, color: p.color }));
+      out.players = this.players.map((p) => ({ slot: p.slot, uid: p.uid, id: p.id, name: p.name, color: p.color, toy: p.toy }));
       out.names = this.squirrels.map((s) => ({ p: s.p, n: s.n, name: s.name }));
       out.craters = this.craters;
       if (this.phase === "over") out.over = { winner: this.winner ? this.winner.name : null, rows: this.results };

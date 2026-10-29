@@ -49,11 +49,38 @@
           </div>
         </div>
       </div>
+
+      <!-- Rabid Squirrels: every player picks a toy, the host picks the map -->
+      <div id="sq-lobby" class="sq-lobby hidden">
+        <div class="card">
+          <p class="label">Pick your squirrel</p>
+          <div class="sq-toys" id="sq-toys"></div>
+          <p class="sq-small">Your squirrels will all be this toy. Every player picks a different one.</p>
+          <p class="sq-error hidden" id="sq-error"></p>
+        </div>
+        <div class="card">
+          <p class="label">Pick the map · the host picks</p>
+          <div class="sq-maps" id="sq-maps"></div>
+        </div>
+        <div class="card">
+          <p class="label">How to play</p>
+          <ul class="sq-howto">
+            <li><span class="ico">⏱️</span><span>When it's <b>your turn</b> you have 30 seconds. Everyone else watches. And heckles.</span></li>
+            <li><span class="ico">👣</span><span><b>← →</b> walks, <b>Space</b> jumps (steer in the air with ← →), up to 150 steps a turn. After you fire you get <b>5 seconds</b> to run with the steps left, or <b>End turn</b>.</span></li>
+            <li><span class="ico">🎯</span><span><b>Drag back</b> like a slingshot to aim. Let go to fire.</span></li>
+            <li><span class="ico">🔓</span><span>A <b>round</b> is one turn for every player. Each new round unlocks a new weapon <b>for everyone</b>. A <b>kill</b> gives everyone a Teleport. Pickups on the map (🔥 Napalm, ☢️ H-Bomb) are yours alone.</span></li>
+            <li><span class="ico">🌊</span><span>Damage hurts. <b>Water and lava kill</b>. The last team standing wins.</span></li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="config.js"></script>
+  <script src="games/squirrels-rules.js"></script>
+  <script src="games/squirrels-art.js"></script>
+  <script src="games/squirrels-maps.js"></script>
   <script src="lobby.js"></script>
 </body>
 </html>

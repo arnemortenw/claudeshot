@@ -4,7 +4,7 @@
 //
 // The world is 2100 x 1120 px. Maps are drawn in 1200 x 640 design units and
 // scaled up by K = 1.75. The terrain is a mask of solid pixels (1) and air (0);
-// explosions carve craters out of it. The hazard (the river on Moonlit Oak)
+// explosions carve craters out of it. The hazard (river, paddling pool or lava)
 // starts 70 px above the bottom and kills whatever falls in.
 //
 // Ported from design v8 (prototypes/rabid-squirrel-worms-style-game/index.html
@@ -79,9 +79,37 @@
   };
   const WIND_PUSH = 0.045;                 // per frame, times the wind (-1 .. 1)
 
-  const MAPS = {
-    oak: { name: "Moonlit Oak", hazard: "river" },
+  // The toys a player picks in the lobby, in the order the picker shows them.
+  // Their colours and drawing live in squirrels-art.js under the same keys.
+  const TOYS = [
+    { key: "sheriff", name: "Sheriff Scratch", line: "“There’s a rabid squirrel in my boot!”" },
+    { key: "ranger", name: "Space Ranger Nutz", line: "“To the nut pile and beyond!”" },
+    { key: "dino", name: "Rexie Nutkin", line: "“I’m a very anxious rabid dinosaur.”" },
+    { key: "bo", name: "Bo Squeak", line: "“Baa. Baa. Bite.”" },
+  ];
+  const isToy = (key) => TOYS.some((t) => t.key === key);
+
+  // What kills at the bottom of each map: its colours, the word on a shot
+  // that falls in, and what a squirrel says on the way down.
+  const HAZARDS = {
+    river: { name: "River", icon: "🌊", fill: "rgba(15,52,96,.92)", line: "rgba(126,200,227,.6)", splash: "#9fd3ea", burst: "#4fc3f7",
+      plop: "plop.", words: ["SPLOOSH!", "GLUB!", "SPLASH!"], lines: ["glub glub", "Can’t… swim…", "Squirrels float, right?"] },
+    pool: { name: "Paddling pool", icon: "🏊", fill: "rgba(64,180,240,.82)", line: "rgba(225,250,255,.95)", splash: "#d6f6ff", burst: "#40b4f0",
+      plop: "sploosh.", words: ["SPLOOSH!", "CANNONBALL!", "SPLASH!"], lines: ["Not the paddling pool!", "glub glub", "Cannonbaaall—"] },
+    lava: { name: "The floor is lava", icon: "🔥", fill: "lava", line: "#ffd25a", splash: "#ffb347", burst: "#ff6a1a",
+      plop: "tssss.", words: ["TSSSS!", "SIZZLE!", "FWOOSH!"], lines: ["The floor is LAVA!", "Hot hot hot!", "Toasted nut."] },
   };
+
+  const MAPS = {
+    oak: { name: "Moonlit Oak", hazard: "river", order: 0,
+      blurb: "A hollow oak, a rock arch, a log shelter, branch ledges and mushrooms." },
+    yard: { name: "Backyard BBQ", hazard: "pool", order: 1,
+      blurb: "Doghouse, picnic table, sandbox, gnome, fence, grill and the pool." },
+    room: { name: "Kid’s Bedroom", hazard: "lava", order: 2,
+      blurb: "Blanket fort, letter blocks, a book tent, the toy box and shelves." },
+  };
+  const MAP_KEYS = Object.keys(MAPS);
+  const hazardOf = (mapKey) => HAZARDS[(MAPS[mapKey] || MAPS.oak).hazard];
 
   // ---------------------------------------------------------------- seeded rng
   function mulberry(seed) {
@@ -210,13 +238,149 @@
     return out;
   }
 
+  // Points along an ellipse from angle a0 to a1 (canvas angles: y points down),
+  // turned by rot around (ox, oy) when given.
+  function arc(cx, cy, rx, ry, a0, a1, n = 24, rot = 0, ox = 0, oy = 0) {
+    const out = [], cr = Math.cos(rot), sr = Math.sin(rot);
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + ((a1 - a0) * i) / n, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+      out.push([ox + x * cr - y * sr, oy + x * sr + y * cr]);
+    }
+    return out;
+  }
+  const rect = (x, y, w, h) => shape.roundRect(x, y, w, h, 0);
+
+  // ---------------------------------------------------------------- Backyard BBQ
+  // The lawn, in design units. The paddling pool is the gap at x 515..685.
+  function yardGround(x) {
+    let y = 458 + Math.sin(x / 210 + 0.5) * 28 + Math.sin(x / 70) * 6;
+    if (x < 30) y += (30 - x) * 6;
+    if (x > 1170) y += (x - 1170) * 6;
+    if (x > 515 && x < 685) y = SH + 60;
+    return y;
+  }
+
+  function yardShapes() {
+    const f = yardGround, out = [];
+    const add = (sh) => out.push(["add", sh]);
+    for (const [x, gy] of [[498, f(498)], [682, f(702)]]) add(shape.roundRect(x, gy - 30, 20, SH - gy + 30, 10)); // pool walls
+    const sy = f(240);                                                                          // sandbox
+    add(shape.poly([[160, sy + 6], [160, sy - 22]].concat(quad([160, sy - 22], [240, sy - 74], [320, sy - 22]).slice(1), [[320, sy + 6]])));
+    add(shape.roundRect(148, sy - 36, 16, 56, 3));
+    add(shape.roundRect(316, sy - 36, 16, 56, 3));
+    add(shape.poly([[262, sy - 54], [290, sy - 54], [286, sy - 30], [266, sy - 30]]));          // bucket
+    const gx = 430, gy = f(430);                                                                // garden gnome
+    add(shape.poly([[412, gy + 4], [448, gy + 4], [441, gy - 34], [419, gy - 34]]));
+    add(shape.ellipse(gx, gy - 40, 9, 8));
+    add(shape.poly([[418, gy - 38], [442, gy - 38], [430, gy - 12]]));
+    add(shape.poly([[418, gy - 44], [442, gy - 44], [426, gy - 90]]));
+    const fy = f(830);                                                                          // picket fence
+    add(rect(756, fy - 74, 106, 9));
+    add(rect(756, fy - 36, 106, 9));
+    for (let x = 760; x < 860; x += 22) {
+      const py = f(x + 7);
+      add(rect(x, py - 94, 14, 104));
+      add(shape.poly([[x, py - 94], [x + 7, py - 106], [x + 14, py - 94]]));
+    }
+    const by = f(1040);                                                                         // grill
+    add(shape.stroke([[1010, by + 4], [1026, by - 48]], 5));
+    add(shape.stroke([[1070, by + 4], [1054, by - 48]], 5));
+    add(shape.poly(arc(1040, by - 52, 42, 26, 0, Math.PI)));
+    add(shape.poly(arc(42, 0, 42, 24, Math.PI, Math.PI * 2, 24, -1.15, 998, by - 52)));
+    add(rect(998, by - 54, 84, 3));
+    add(shape.roundRect(1012, by - 62, 22, 9, 4));
+    add(shape.roundRect(1042, by - 62, 24, 9, 4));
+    const py = f(96);                                                                           // flower pot
+    for (const [x, h] of [[86, -64], [96, -74], [106, -60]]) {
+      add(shape.stroke([[96, py - 26], [x, py + h]], 3));
+      for (let a = 0; a < 5; a++) add(shape.ellipse(x + Math.cos(a * 1.26) * 5, py + h + Math.sin(a * 1.26) * 5, 4, 4));
+    }
+    add(shape.poly([[78, py - 30], [114, py - 30], [108, py + 4], [84, py + 4]]));
+    add(rect(76, py - 32, 40, 7));
+    const dy = f(368);                                                                          // doghouse with a door to duck into
+    add(rect(334, dy - 60, 68, 66));
+    add(shape.poly([[322, dy - 56], [368, dy - 98], [414, dy - 56]]));
+    out.push(["cut", shape.poly([[352, dy - 2], [352, dy - 26]].concat(arc(368, dy - 26, 16, 16, Math.PI, Math.PI * 2), [[384, dy - 2]]))]);
+    const ty = f(945);                                                                          // picnic table
+    add(shape.stroke([[905, f(905) + 4], [932, ty - 50]], 7));
+    add(shape.stroke([[985, f(985) + 4], [958, ty - 50]], 7));
+    add(shape.roundRect(888, ty - 60, 114, 11, 3));
+    const fy2 = f(1150);                                                                        // bird feeder pole
+    add(rect(1146, fy2 - 200, 8, 206));
+    add(shape.roundRect(1122, fy2 - 208, 56, 9, 2));
+    return out;
+  }
+
+  // ---------------------------------------------------------------- Kid's Bedroom
+  // No ground: everything stands up out of the lava. The letter blocks and the
+  // toy bricks are solid all the way across, so no squirrel slips down a seam.
+  const ROOM_BOOKS = [[180, 34, "#c0392b"], [166, 28, "#2e86de"], [172, 40, "#27ae60"], [150, 26, "#f1c40f"], [160, 36, "#8e44ad"], [140, 30, "#e67e22"]];
+  const ROOM_BOOK_JIG = [3, 6, 1, 5, 2, 7];
+  // The book tower, bottom up: [x, y, w, h, colour] in design units.
+  function roomBooks() {
+    let y = 600;
+    return ROOM_BOOKS.map(([w, h, col], i) => { y -= h; return [606 + (i % 2 ? 12 : 0) + ROOM_BOOK_JIG[i], y, w, h, col]; });
+  }
+  // The letter-block pyramid: [x, y, size, row, i].
+  function roomBlocks() {
+    const out = [];
+    for (let row = 0; row < 4; row++) for (let i = 0; i < 4 - row; i++) out.push([350 + row * 26 + i * 52, 548 - row * 52, 52, row, i]);
+    return out;
+  }
+  // The toy-brick stairs: one column per step, [x, top, rows].
+  function roomBricks() {
+    return [0, 1, 2].map((col) => { const rows = 3 + col * 2; return [1034 + col * 54, 600 - 30 * rows, rows]; });
+  }
+
+  function roomShapes() {
+    const out = [], add = (sh) => out.push(["add", sh]);
+    add(shape.roundRect(12, 300, 26, SH, 8));                                                   // bed
+    add(shape.roundRect(300, 372, 22, SH, 6));
+    add(shape.roundRect(30, 436, 284, 20, 4));
+    add(shape.roundRect(30, 398, 284, 42, 10));
+    add(shape.roundRect(122, 391, 192, 74, 10));
+    add(shape.ellipse(82, 392, 44, 16));
+    for (const [x, y, s] of roomBlocks()) add(rect(x, y, s, s));                                // letter blocks
+    for (const [x, d] of [[430, 1], [630, -1]]) add(shape.poly([[x, 262], [x + d * 22, 262], [x, 302]])); // low shelf
+    add(shape.roundRect(400, 250, 260, 14, 3));
+    add(shape.roundRect(450, 226, 58, 18, 6));                                                  // toy car
+    add(shape.roundRect(462, 213, 32, 15, 5));
+    add(shape.ellipse(464, 244, 7, 7));
+    add(shape.ellipse(496, 244, 7, 7));
+    add(shape.ellipse(600, 230, 27, 19));                                                       // piggy bank
+    add(shape.ellipse(625, 228, 7, 8));
+    add(rect(584, 240, 7, 10));
+    add(rect(608, 240, 7, 10));
+    add(shape.poly([[586, 214], [592, 202], [598, 214]]));
+    add(rect(608, 600, 180, SH - 600));                                                         // book tower
+    for (const [x, y, w, h] of roomBooks()) add(shape.roundRect(x, y, w, h, 4));
+    add(shape.poly([[838, 440], [1008, 440], [1022, 384], [852, 370]]));                        // toy box, lid open
+    add(shape.roundRect(950, 358, 26, 90, 12));                                                 // its rocket
+    add(shape.poly([[950, 368], [976, 368], [963, 336]]));
+    add(shape.roundRect(828, 436, 184, SH, 6));
+    for (const [x, top, , ] of roomBricks()) add(rect(x, top, x < 1140 ? 54 : 52, SH - top)); // brick stairs
+    for (const [x, top, rows] of roomBricks()) { add(rect(x + 8, top - 6, 13, 7)); add(rect(x + 31, top - 6, 13, 7)); }
+    add(shape.stroke(quad([128, 394], [215, 248], [302, 394]), 12));                            // blanket fort
+    add(shape.stroke([[628, 404], [697, 338], [766, 404]], 8));                                 // book tent
+    add(shape.poly([[1070, 182], [1092, 182], [1070, 214]]));                                   // high shelf
+    add(shape.roundRect(1060, 170, 130, 12, 3));
+    return out;
+  }
+
+  const TERRAIN = {
+    oak: { ground: oakGround, shapes: oakShapes },
+    yard: { ground: yardGround, shapes: yardShapes },
+    room: { ground: null, shapes: roomShapes },
+  };
+
   // The solid mask for a map: W*H bytes, row by row. Pixel (x, y) is tested at
   // its centre, in design units.
   function makeTerrain(mapKey = "oak") {
-    if (mapKey !== "oak") throw new Error("unknown map " + mapKey);
+    const T = TERRAIN[mapKey];
+    if (!T) throw new Error("unknown map " + mapKey);
     const mask = new Uint8Array(W * H);
-    for (let x = 0; x < W; x++) {
-      const top = (oakGround((x + 0.5) / K) - OAK_GRASS) * K;
+    if (T.ground) for (let x = 0; x < W; x++) {
+      const top = (T.ground((x + 0.5) / K) - OAK_GRASS) * K;
       if (top >= H) continue;
       for (let y = Math.max(0, Math.ceil(top - 0.5)); y < H; y++) mask[y * W + x] = 1;
     }
@@ -231,7 +395,7 @@
         for (let x = x0; x <= x1; x++) if (sh.at((x + 0.5) / K, dy)) mask[y * W + x] = v;
       }
     };
-    for (const [op, sh] of oakShapes()) paint(op, sh);
+    for (const [op, sh] of T.shapes()) paint(op, sh);
     return mask;
   }
 
@@ -263,11 +427,13 @@
   }
 
   // Where a squirrel may start: on top of the terrain, well above the hazard,
-  // with room to stand.
+  // with room to stand and ground about level on both sides (not the tip of
+  // a gnome's hat or a fence picket).
   function standable(mask, x) {
     const y = dropY(mask, x);
     if (y > WATER - 30 || y < 40) return null;
     for (let k = 1; k <= 30; k++) if (solid(mask, x, y - k)) return null;
+    for (const dx of [-12, 12]) if (Math.abs(dropY(mask, x + dx) - y) > 8) return null;
     return y;
   }
 
@@ -366,5 +532,6 @@
     PLAYER_COLORS, SQUIRREL_NAMES, WEAPONS, WIND_PUSH, MAPS, OAK_GRASS,
     mulberry, oakGround, makeTerrain, solid, crater, dropY, standable, spawns, aimFromDrag, launch,
     ORDER, START, ROUND_UNLOCKS, PINE, RETREAT_SECONDS, MELEE_REACH, unlockedFor, lockText, blasterTrace, meleeVictims,
+    TOYS, isToy, HAZARDS, MAP_KEYS, hazardOf, yardGround, roomBooks, roomBlocks, roomBricks,
   };
 });

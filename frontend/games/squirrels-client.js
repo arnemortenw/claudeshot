@@ -1,12 +1,13 @@
-// Rabid Squirrels - the client. Draws what the server sends: the Moonlit Oak
-// terrain with every crater, the squirrels, the shot and the HUD. Sends the
+// Rabid Squirrels - the client. Draws what the server sends: the map the host
+// picked, with every crater, the squirrels, the shot and the HUD. Sends the
 // active player's keys and slingshot aim on "squirrels-input".
 //
 // The terrain's shape comes from SQUIRRELS_RULES.makeTerrain, the same mask
-// the server plays on, so what you see is what the shot hits. The art is
-// ported from design v8 and only coloured in where that mask is solid.
+// the server plays on, so what you see is what the shot hits. The map art and
+// its hazard are drawn by SQUIRRELS_MAPS (squirrels-maps.js).
 //
-// The toys are drawn by SQUIRRELS_ART (squirrels-art.js). The camera follows
+// The toys each player picked in the lobby are drawn by SQUIRRELS_ART
+// (squirrels-art.js). The camera follows
 // the active squirrel, then the shot, then where it landed; each laptop has its
 // own zoom and whole-map view. The HUD is laid out on a 1200 x 640 box scaled
 // to the stage, so it lines up with the canvas at any size.
@@ -20,6 +21,7 @@
   const R = window.SQUIRRELS_RULES;
   const { SW, SH, K, W, H, WATER, G, SIZE } = R;
   const A = window.SQUIRRELS_ART;
+  const M = window.SQUIRRELS_MAPS;
   const ZMIN = SW / W, ZMAX = 2.6, ZSTART = 1.8;  // canvas px per world px
   const FONT = "Bangers, Impact, 'Arial Black', sans-serif";
   const SEND_AIM_MS = 60;
@@ -29,108 +31,6 @@
   // ---------------------------------------------------------------- art helpers
   function ell(c, x, y, rx, ry, rot = 0) { c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); }
   function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); }
-  function mix(hex, amt) {
-    const n = parseInt(hex.slice(1), 16), t = amt < 0 ? 0 : 255, p = Math.abs(amt);
-    const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (t - v) * p));
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
-  }
-  const hash = (x, y) => ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1;
-
-  // ---------------------------------------------------------------- Moonlit Oak art (design v8)
-  const MW = SW, MH = SH;
-  function ground(c, f, cols) {
-    const g = c.createLinearGradient(0, 330, 0, MH); g.addColorStop(0, cols[0]); g.addColorStop(1, cols[1]);
-    c.fillStyle = g; c.beginPath(); c.moveTo(0, MH + 60);
-    for (let x = 0; x <= MW; x += 4) c.lineTo(x, Math.min(f(x), MH + 60));
-    c.lineTo(MW, MH + 60); c.closePath(); c.fill();
-    c.lineCap = "round"; c.lineJoin = "round";
-    [[12, cols[2], 3], [5, cols[3], -2]].forEach(([lw, col, off]) => {
-      c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); let pen = false;
-      for (let x = 0; x <= MW; x += 4) { const y = f(x) + off; if (y > MH - 10) { pen = false; continue; } pen ? c.lineTo(x, y) : c.moveTo(x, y); pen = true; }
-      c.stroke();
-    });
-  }
-  function nightSky(b, r) {
-    const g = b.createLinearGradient(0, 0, 0, MH);
-    g.addColorStop(0, "#141428"); g.addColorStop(0.55, "#26355f"); g.addColorStop(1, "#5a3d5c");
-    b.fillStyle = g; b.fillRect(0, 0, MW, MH);
-    for (let i = 0; i < 80; i++) { b.fillStyle = `rgba(255,255,255,${0.2 + r() * 0.5})`; b.fillRect(r() * MW, r() * MH * 0.45, 1.5, 1.5); }
-  }
-  function bgNight(b, r) {
-    nightSky(b, r);
-    b.fillStyle = "#f5e9c8"; b.beginPath(); b.arc(380, 150, 32, 0, 7); b.fill();
-    b.fillStyle = "#1f2b50"; b.beginPath(); b.arc(367, 140, 27, 0, 7); b.fill();
-    [[0.62, "#1d2748", 70], [0.7, "#18203b", 52]].forEach(([base, col, sz]) => {
-      b.fillStyle = col;
-      for (let x = -20; x < MW + 20; x += sz * 0.55 + r() * sz * 0.5) {
-        const h = sz * (1.4 + r() * 1.3), y = MH * base + Math.sin(x * 0.01) * 20;
-        b.beginPath(); b.moveTo(x, y - h); b.lineTo(x - sz * 0.42, y); b.lineTo(x + sz * 0.42, y); b.fill();
-        b.fillRect(x - 3, y - 2, 6, MH);
-      }
-      b.fillRect(0, MH * base + 20, MW, MH);
-    });
-  }
-  function decoOak(c, r) {
-    c.fillStyle = "#140d07"; rr(c, 560, 345, 120, 64, 28); c.fill();
-    [[615, 128, 98, 0], [515, 172, 62, 1], [718, 150, 72, 1], [560, 90, 58, 0], [676, 92, 62, 1], [455, 212, 40, 0], [800, 186, 46, 0]].forEach(([x, y, rad, k]) => {
-      c.fillStyle = k ? "#1e3a28" : "#244a31"; c.beginPath(); c.arc(x, y, rad, 0, 7); c.fill();
-      c.fillStyle = "rgba(140,200,140,.10)"; c.beginPath(); c.arc(x - rad * 0.25, y - rad * 0.3, rad * 0.6, 0, 7); c.fill();
-    });
-    for (let i = 0; i < 30; i++) { c.fillStyle = `rgba(255,240,140,${0.5 + r() * 0.5})`; c.beginPath(); c.arc(430 + r() * 400, 60 + r() * 200, 1 + r() * 1.2, 0, 7); c.fill(); }
-  }
-  function terrainOak(c, r) {
-    const f = R.oakGround;
-    ground(c, f, ["#8a5530", "#3e2414", "#4e8d36", "#6ab04c"]);
-    for (let i = 0; i < 16; i++) { const x = r() * MW, y = f(x) + 35 + r() * 140; if (y > MH) continue; c.fillStyle = r() > 0.5 ? "#5d5a58" : "#6e6a66"; ell(c, x, y, 8 + r() * 14, 6 + r() * 9, r()); c.fill(); }
-    const bark = c.createLinearGradient(530, 0, 700, 0); bark.addColorStop(0, "#3f2613"); bark.addColorStop(0.5, "#7a4f2a"); bark.addColorStop(1, "#3f2613");
-    c.fillStyle = bark; c.beginPath(); c.moveTo(505, 432); c.quadraticCurveTo(565, 410, 575, 330); c.lineTo(592, 140); c.lineTo(643, 140); c.lineTo(660, 330); c.quadraticCurveTo(672, 410, 732, 432); c.closePath(); c.fill();
-    c.strokeStyle = "rgba(30,15,5,.45)"; c.lineWidth = 2; for (let i = 0; i < 7; i++) { const x = 590 + i * 9; c.beginPath(); c.moveTo(x, 150); c.quadraticCurveTo(x + (i % 2 ? 6 : -6), 250, x - 4 + i, 330); c.stroke(); }
-    c.lineCap = "round"; c.strokeStyle = "#5b391c";
-    c.lineWidth = 18; c.beginPath(); c.moveTo(605, 262); c.quadraticCurveTo(530, 230, 452, 232); c.stroke();
-    c.beginPath(); c.moveTo(638, 218); c.quadraticCurveTo(720, 190, 808, 196); c.stroke();
-    c.lineWidth = 11; c.beginPath(); c.moveTo(612, 150); c.lineTo(588, 96); c.stroke();
-    c.save(); c.globalCompositeOperation = "destination-out"; rr(c, 560, 345, 120, 64, 28); c.fill(); ell(c, 1070, f(1070) + 48, 56, 22); c.fill(); c.restore();
-    [[268, 1], [1048, 0.8]].forEach(([x, s]) => {
-      const gy = f(x);
-      c.fillStyle = "#efe6d6"; rr(c, x - 8 * s, gy - 62 * s, 16 * s, 66 * s, 5); c.fill();
-      c.fillStyle = "#d64545"; c.beginPath(); c.ellipse(x, gy - 60 * s, 40 * s, 24 * s, 0, Math.PI, 0); c.closePath(); c.fill();
-      c.fillStyle = "#fff"; [[-20, -70], [4, -78], [22, -68], [-6, -66]].forEach(([dx, dy]) => { ell(c, x + dx * s, gy + dy * s, 5 * s, 3.5 * s); c.fill(); });
-    });
-    c.lineCap = "round"; c.strokeStyle = "#6e6a66"; c.lineWidth = 22;
-    c.beginPath(); c.moveTo(92, f(92) + 8); c.bezierCurveTo(100, f(92) - 125, 222, f(230) - 125, 232, f(232) + 8); c.stroke();
-    c.strokeStyle = "#5b391c"; c.lineWidth = 14; c.beginPath(); c.moveTo(578, 338); c.quadraticCurveTo(520, 318, 452, 328); c.stroke();
-    const ly = Math.min(f(945), f(1000)) - 46;
-    c.fillStyle = "#6e6a66"; ell(c, 945, f(945) - 14, 14, 20); c.fill(); ell(c, 1000, f(1000) - 14, 14, 20); c.fill();
-    c.fillStyle = "#6b4423"; rr(c, 922, ly - 12, 100, 22, 11); c.fill();
-    c.fillStyle = "#c99a62"; ell(c, 1019, ly - 1, 5, 10); c.fill();
-  }
-
-  // Paints the map art, then keeps it only where the shared mask is solid.
-  // Solid pixels the art left empty get plain dirt, so nothing solid is invisible.
-  function buildTerrain() {
-    const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
-    const bg = mk(SW, SH), deco = mk(W, H), t = mk(W, H), r = R.mulberry(11);
-    const dc = deco.getContext("2d"), tc = t.getContext("2d", { willReadFrequently: true });
-    dc.scale(K, K); tc.scale(K, K);
-    const bc = bg.getContext("2d");
-    bgNight(bc, r); decoOak(dc, r); terrainOak(tc, r);
-    // pop-art halftone over the sky, denser towards the top
-    for (let y = 4; y < SH; y += 8) for (let x = (y / 8) % 2 ? 4 : 0; x < SW; x += 8) {
-      bc.fillStyle = `rgba(255,255,255,${0.05 * (1 - y / SH)})`; bc.beginPath(); bc.arc(x, y, 1.6, 0, 7); bc.fill();
-    }
-    tc.setTransform(1, 0, 0, 1, 0, 0);
-    const mask = R.makeTerrain("oak");
-    const img = tc.getImageData(0, 0, W, H), d = img.data, amt = 0.2;
-    for (let j = 0; j < W * H; j++) {
-      const i = j * 4;
-      if (!mask[j]) { d[i + 3] = 0; continue; }
-      if (d[i + 3] < 110) { d[i] = 0x6b; d[i + 1] = 0x44; d[i + 2] = 0x23; }
-      const k = 1 - amt / 2 + hash(j % W, (j / W) | 0) * amt;
-      d[i] = Math.min(255, d[i] * k); d[i + 1] = Math.min(255, d[i + 1] * k); d[i + 2] = Math.min(255, d[i + 2] * k); d[i + 3] = 255;
-    }
-    tc.putImageData(img, 0, 0);
-    return { bg, deco, t, tc, img, mask };
-  }
 
   function carve(c) {
     const T = S.terrain, d = T.img.data, { x: cx, y: cy, r } = c;
@@ -287,13 +187,20 @@
         </div>
         <div class="sq-reconnect" id="sq-reconnect"><div><big>RECONNECTING…</big><small id="sq-reconnect-sub"></small></div></div>
       </div>
-      <div class="sq-below"><span id="sq-below">Room ${esc(room.code)} · Moonlit Oak</span><span>🌊 The river kills · last player standing wins</span></div>`;
+      <div class="sq-below"><span id="sq-below">Room ${esc(room.code)}</span><span id="sq-below-hz">Last player standing wins</span></div>`;
     area.appendChild(wrap);
     return { style, wrap };
   }
 
   // ---------------------------------------------------------------- state from the server
   function onInit(data) {
+    // the map arrives here: paint it the first time, and again if it changed
+    if (!S.terrain || S.terrain.map !== data.map) {
+      S.terrain = M.buildTerrain(data.map);
+      S.map = R.MAPS[data.map] ? data.map : "oak";
+      S.hz = R.hazardOf(S.map);
+      S.carved = 0;
+    }
     S.players = data.players;
     S.names = data.names;
     S.perPlayer = data.perPlayer;
@@ -306,7 +213,8 @@
     onState(data);
     if (data.over) onOver(data.over);
     const who = S.players.map((p) => esc(p.name)).join(" vs ");
-    document.getElementById("sq-below").innerHTML = `Room ${esc(S.room.code)} · ${who} · ${S.perPlayer} squirrels each · Moonlit Oak`;
+    document.getElementById("sq-below").innerHTML = `Room ${esc(S.room.code)} · ${who} · ${S.perPlayer} squirrels each · ${esc(R.MAPS[S.map].name)}`;
+    document.getElementById("sq-below-hz").textContent = `${S.hz.icon} ${S.hz.name} kills · last player standing wins`;
   }
 
   function onState(st) {
@@ -341,8 +249,8 @@
     } else if (e.k === "pop") {
       S.popups.push({ x: e.x, y: e.y, text: e.text, color: e.color, size: e.size, life: 90 });
     } else if (e.k === "splash") {
-      if (e.big) addBurst(e.x, WATER, pickWord(SPLASH_WORDS), "#4fc3f7", "#fffbe8", 30);
-      for (let i = 0; i < (e.big ? 24 : 12); i++) S.particles.push({ x: e.x, y: WATER, vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 6, life: 50, color: "#9fd3ea", size: 3, g: 0.25 });
+      if (e.big) addBurst(e.x, WATER, pickWord(S.hz.words), S.hz.burst, "#fffbe8", 30);
+      for (let i = 0; i < (e.big ? 24 : 12); i++) S.particles.push({ x: e.x, y: WATER, vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 6, life: 50, color: S.hz.splash, size: 3, g: 0.25 });
     } else if (e.k === "banner") {
       showBanner(e.big, e.sub, e.color, e.ms);
     } else if (e.k === "beam") {
@@ -374,7 +282,6 @@
 
   // Comic sound-effect bursts: a jagged star with a big outlined word on top.
   const BOOM_WORDS = ["WHAM!", "KA-BOOM!", "POW!", "BLAM!", "KRAK!", "THWACK!"];
-  const SPLASH_WORDS = ["SPLOOSH!", "GLUB!", "SPLASH!"];
   const pickWord = (a) => a[Math.floor(Math.random() * a.length)];
   // x, y is the impact in world px; r how big it was. The burst goes beside it.
   function addBurst(x, y, word, fill, ring, r = 40) {
@@ -458,6 +365,7 @@
     for (let i = 0; i < r / 3; i++) S.particles.push({ x, y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30, color: i % 2 ? "#ffd166" : "#ff7b39", size: 4 + Math.random() * r / 7, g: 0, fire: true });
   }
 
+  const toyName = (key) => (R.TOYS.find((t) => t.key === key) || R.TOYS[0]).name;
   const myTurn = () => S.st && S.st.ph === "aim" && S.st.cur === S.me && S.me >= 0;
   // walking, jumping and End turn also work in the retreat after your attack
   const canMove = () => S.st && S.st.cur === S.me && S.me >= 0 && (S.st.ph === "aim" || S.st.rt > 0);
@@ -472,7 +380,7 @@
   function buildTeams() {
     const side = (k) => S.players.filter((p) => p.slot % 2 === k).map((p) => `
       <div class="sq-team" id="sq-team${p.slot}" style="--c:${p.color}">
-        <div class="tn"><canvas width="68" height="68" data-slot="${p.slot}" title="${esc(A.TOYS[A.toyFor(p.slot)].name)}"></canvas><span>${esc(p.name)}</span>${p.slot === S.me ? "<small>YOU</small>" : ""}</div>
+        <div class="tn"><canvas width="68" height="68" data-slot="${p.slot}" title="${esc(toyName(p.toy))}"></canvas><span>${esc(p.name)}</span>${p.slot === S.me ? "<small>YOU</small>" : ""}</div>
         ${S.names.map((n, i) => n.p === p.slot ? `<div class="sq-row" id="sq-row${i}"><span class="n">${esc(n.name)}</span><span class="bar"><b></b></span><span class="hp"></span></div>` : "").join("")}
         <div class="sq-loot" id="sq-loot${p.slot}"></div>
       </div>`).join("");
@@ -480,7 +388,7 @@
     document.getElementById("sq-side-r").innerHTML = side(1);
     document.querySelectorAll(".sq-team canvas").forEach((cv) => {
       const slot = +cv.dataset.slot;
-      A.drawToyHead(cv, A.toyFor(slot), S.players[slot].color);
+      A.drawToyHead(cv, S.players[slot].toy, S.players[slot].color);
     });
     S.panelRects = null;
   }
@@ -691,7 +599,10 @@
     const ctx = S.ctx, st = S.st, T = S.terrain, cam = S.cam;
     S.frame++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (!st) { ctx.drawImage(T.bg, 0, 0, SW, SH); S.raf = requestAnimationFrame(render); return; }
+    if (!st || !T) {
+      if (T) ctx.drawImage(T.bg, 0, 0, SW, SH); else { ctx.fillStyle = "#16213e"; ctx.fillRect(0, 0, SW, SH); }
+      S.raf = requestAnimationFrame(render); return;
+    }
 
     // drawn positions ease towards the server's
     st.sq.forEach((q, i) => { const d = S.disp[i]; d.x += (q.x - d.x) * 0.4; d.y += (q.y - d.y) * 0.4; });
@@ -750,7 +661,7 @@
       const d = S.disp[i], slot = S.names[i].p, color = S.players[slot].color, f = S.fx[i];
       ctx.save(); ctx.translate(d.x, d.y); ctx.scale(SIZE, SIZE);
       if (q.dead) A.drawGrave(ctx, color);
-      else A.drawToy(ctx, A.toyFor(slot), {
+      else A.drawToy(ctx, S.players[slot].toy, {
         color, face: q.face, t: S.frame + i * 17, blink: f.blink > 0, twitch: f.twitch > 0,
         pop: f.pop > 0 ? Math.sin((1 - f.pop / 40) * Math.PI) : 0,
         bob: i === st.act && st.ph !== "over" ? Math.sin(S.frame / 6) * 0.8 : 0,
@@ -760,6 +671,7 @@
 
     st.shots.forEach((p, i) => drawShot(ctx, p, S.shotDisp[i] || p));
 
+    if (S.hz.fill === "lava" && Math.random() < 0.2) S.particles.push({ x: Math.random() * W, y: WATER + 3, vx: 0, vy: -0.5, life: 26, color: "#ffd25a", size: 2 + Math.random() * 2, g: 0 });
     S.particles.forEach((p) => {
       p.x += p.vx; p.y += p.vy; p.vy += p.g; p.life--;
       if (p.smoke) p.size *= 1.03; if (p.fire) p.size *= 1.012;
@@ -769,15 +681,8 @@
     ctx.globalAlpha = 1;
     S.particles = S.particles.filter((p) => p.life > 0);
 
-    // the river
-    const t = S.frame / 30;
-    ctx.fillStyle = "rgba(15,52,96,.92)";
-    ctx.beginPath(); ctx.moveTo(-60, H + 60);
-    for (let x = -60; x <= W + 60; x += 16) ctx.lineTo(x, WATER + Math.sin(x * 0.03 + t) * 4);
-    ctx.lineTo(W + 60, H + 60); ctx.fill();
-    ctx.strokeStyle = "rgba(126,200,227,.6)"; ctx.lineWidth = 2; ctx.beginPath();
-    for (let x = -60; x <= W + 60; x += 16) ctx.lineTo(x, WATER + Math.sin(x * 0.03 + t) * 4);
-    ctx.stroke();
+    // the hazard: river, paddling pool or lava
+    M.drawHazard(ctx, S.hz, S.frame);
 
     // screen space: name tags, edge arrows and popups
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1008,7 +913,7 @@
     const cv = document.getElementById("sq-cv");
     S = {
       socket, room, myName: sessionStorage.getItem("myName"), page, cv, ctx: cv.getContext("2d"),
-      terrain: buildTerrain(), carved: 0, syncing: false, players: null, names: null, me: -1,
+      terrain: null, map: null, hz: null, carved: 0, syncing: false, players: null, names: null, me: -1,
       st: null, disp: [], fx: [], shotDisp: [], particles: [], popups: [], bursts: [], beams: [], shake: 0, frame: 0,
       keys: {}, dir: 0, drag: null, hover: null, aimSent: 0, raf: 0, fired: false, focus: null, panelRects: null,
       fresh: {}, trayHtml: "",

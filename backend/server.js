@@ -3,7 +3,7 @@ const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const { createRoom, joinRoom, rejoinRoom, leaveRoom, getRooms } = require("./roomManager");
+const { createRoom, joinRoom, rejoinRoom, leaveRoom, getRooms, pickToy, setSquirrelsLobby } = require("./roomManager");
 const SnakeGame = require("./games/snake");
 const HungryGame = require("./games/hungry");
 const ShooterGame = require("./games/shooter");
@@ -180,12 +180,34 @@ io.on("connection", (socket) => {
     for (const [, r] of getRooms()) {
       if (r.host === socket.id) {
         const total = Math.min(5, Math.max(1, parseInt(settings.rounds) || 1));
-        r.settings = settings;     // games read their own lobby options from here
+        // games read their own lobby options from here; what the room keeps
+        // (the squirrels map and count) wins over what the host's page sent
+        r.settings = { ...settings, ...(r.lobby || {}) };
         activeRounds[r.code] = { current: 1, total, totalScores: {} };
         startGameRound(r);
         return;
       }
     }
+  });
+
+  // Rabid Squirrels lobby: a player picks a toy, the host picks the map.
+  // A refusal goes back to that player only, with the room as it is.
+  socket.on("squirrels-toy", ({ code, toy } = {}) => {
+    const result = pickToy(String(code || "").toUpperCase(), socket.id, toy);
+    if (result.error) {
+      socket.emit("squirrels-lobby-error", result.error);
+      return;
+    }
+    io.to(result.code).emit("room-updated", result);
+  });
+
+  socket.on("squirrels-lobby", ({ code, map, squirrels } = {}) => {
+    const result = setSquirrelsLobby(String(code || "").toUpperCase(), socket.id, { map, squirrels });
+    if (result.error) {
+      socket.emit("squirrels-lobby-error", result.error);
+      return;
+    }
+    io.to(result.code).emit("room-updated", result);
   });
 
   socket.on("snake-input", ({ dir }) => {

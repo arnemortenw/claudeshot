@@ -27,6 +27,15 @@ socket.on("kicked", () => {
   window.location.href = "index.html";
 });
 
+socket.on("squirrels-lobby-error", (msg) => {
+  const box = document.getElementById("sq-error");
+  if (!box) return;
+  box.textContent = msg;
+  box.classList.remove("hidden");
+  clearTimeout(box._t);
+  box._t = setTimeout(() => box.classList.add("hidden"), 3500);
+});
+
 socket.on("game-started", () => {
   window.location.href = "game.html";
 });
@@ -37,6 +46,7 @@ const GAME_NAMES = { snake: "🐍 Snake", hungry: "🍗 Hungry Lasse", shooter: 
 const MIN_PLAYERS = { treehut: 2, squirrels: 2 };
 
 let gameSettings = {};
+let currentRoom = null;
 
 function renderGameSettings(game) {
   const container = document.getElementById("game-settings");
@@ -67,24 +77,23 @@ function renderGameSettings(game) {
   if (game === "treehut") gameSettings.rounds = 1;
 
   // Rabid Squirrels is one match to the last player standing: no rounds picker.
+  // The squirrels per player live on the room, like the map, so every lobby
+  // shows them; the buttons ask the server to change them.
   if (game === "squirrels") {
+    const now = (currentRoom && currentRoom.lobby && currentRoom.lobby.squirrels) || 2;
     gameSettings.rounds = 1;
-    gameSettings.squirrels = 2;
     container.innerHTML = `
       <div class="round-picker">
         <label class="label">Squirrels per player</label>
         <div class="round-btns">
           ${[2, 3].map(n =>
-            `<button class="round-btn${n === 2 ? " active" : ""}" data-squirrels="${n}">${n}</button>`
+            `<button class="round-btn${n === now ? " active" : ""}" data-squirrels="${n}">${n}</button>`
           ).join("")}
         </div>
-        <p style="font-size:0.78rem;color:#8892a4;margin-top:0.5rem;">Moonlit Oak · 30-second turns · last player standing wins</p>
       </div>`;
     container.querySelectorAll(".round-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        container.querySelectorAll(".round-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        gameSettings.squirrels = parseInt(btn.dataset.squirrels);
+        socket.emit("squirrels-lobby", { code: currentRoom.code, squirrels: parseInt(btn.dataset.squirrels) });
       });
     });
   }
@@ -159,6 +168,7 @@ function renderGameSettings(game) {
 }
 
 function renderRoom(room) {
+  currentRoom = room;
   document.getElementById("room-code").textContent = room.code;
   document.getElementById("player-count").textContent = `${room.players.length} / ${room.maxPlayers}`;
 
@@ -167,16 +177,18 @@ function renderRoom(room) {
 
   const list = document.getElementById("player-list");
   list.innerHTML = "";
-  room.players.forEach((p) => {
+  room.players.forEach((p, i) => {
     const li = document.createElement("li");
     li.className = "player-item";
     const isHost = p.id === room.host;
-    li.textContent = p.name + (isHost ? " (host)" : "");
+    if (room.game === "squirrels") squirrelsPlayerItem(li, room, p, i);
+    else li.textContent = p.name + (isHost ? " (host)" : "");
     if (p.id === socket.id) li.classList.add("me");
     list.appendChild(li);
   });
 
   renderTeamPicker(room.game);
+  renderSquirrelsLobby(room);
 
   const isHost = room.host === socket.id;
   document.getElementById("host-controls").classList.toggle("hidden", !isHost);
@@ -242,6 +254,119 @@ function renderTeamPicker(game) {
     paint();
   }));
   paint();
+}
+
+// ---- Rabid Squirrels: pick your toy, the host picks the map -------------
+// Built from SQUIRRELS_RULES.TOYS and .MAPS, so a new toy or map shows up here
+// on its own. The server checks every pick; this only mirrors its rules.
+const SQ = window.SQUIRRELS_RULES;
+let sqPortraits = [];
+let sqFrame = 0;
+let sqRaf = 0;
+
+const toyName = (key) => (SQ.TOYS.find(t => t.key === key) || SQ.TOYS[0]).name;
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+// In the match player i plays in PLAYER_COLORS[i], so the lobby shows the same.
+function squirrelsPlayerItem(li, room, p, i) {
+  li.classList.add("sq");
+  const tag = p.id === room.host ? (p.id === socket.id ? "Host · you" : "Host") : (p.id === socket.id ? "You" : "");
+  li.innerHTML = `<span class="sq-dot" style="background:${SQ.PLAYER_COLORS[i % SQ.PLAYER_COLORS.length]}"></span>` +
+    `<span>${escHtml(p.name)}</span><span class="sq-as">as ${escHtml(toyName(p.toy))}</span>` +
+    (tag ? `<span class="sq-tag">${tag}</span>` : "");
+}
+
+function renderSquirrelsLobby(room) {
+  const box = document.getElementById("sq-lobby");
+  const on = room.game === "squirrels" && !!room.lobby;
+  box.classList.toggle("hidden", !on);
+  document.querySelector(".lobby-container").classList.toggle("sq-wide", on);
+  if (!on) return;
+
+  // the line under the players: map, squirrels each, turn length
+  let info = document.getElementById("sq-info");
+  if (!info) {
+    info = document.createElement("p");
+    info.id = "sq-info";
+    info.className = "sq-info";
+    document.getElementById("player-list").after(info);
+  }
+  const map = SQ.MAPS[room.lobby.map] || SQ.MAPS.oak;
+  info.textContent = `Map: ${map.name} · ${room.lobby.squirrels} squirrels each · ${SQ.TURN_SECONDS}-second turns`;
+  document.querySelectorAll("#game-settings [data-squirrels]").forEach(b =>
+    b.classList.toggle("active", +b.dataset.squirrels === room.lobby.squirrels));
+
+  // toys: taken ones are greyed out with the owner's name, unless every toy
+  // is taken, when a toy may be shared
+  const me = room.players.find(p => p.id === socket.id) || {};
+  const others = room.players.filter(p => p !== me && p.toy);
+  const allTaken = SQ.TOYS.every(t => others.some(p => p.toy === t.key));
+  document.getElementById("sq-toys").innerHTML = SQ.TOYS.map(t => {
+    const owner = others.find(p => p.toy === t.key);
+    const locked = owner && !allTaken;
+    return `<button class="sq-toy${me.toy === t.key ? " on" : ""}" data-toy="${t.key}"${locked ? " disabled" : ""}>
+      ${owner && me.toy !== t.key ? `<span class="taken">${escHtml(owner.name)}</span>` : ""}
+      <canvas width="260" height="278" data-toy="${t.key}"></canvas>
+      <span class="cname">${escHtml(t.name)}</span><span class="cline">${escHtml(t.line)}</span></button>`;
+  }).join("");
+  document.querySelectorAll("#sq-toys .sq-toy").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.toy !== me.toy) socket.emit("squirrels-toy", { code: room.code, toy: b.dataset.toy });
+  }));
+  const colorOf = (key) => {
+    const i = room.players.findIndex(p => p.toy === key);
+    return i < 0 ? "#8892a4" : SQ.PLAYER_COLORS[i % SQ.PLAYER_COLORS.length];
+  };
+  sqPortraits = [...document.querySelectorAll("#sq-toys canvas")].map(cv =>
+    ({ cv, key: cv.dataset.toy, mine: cv.dataset.toy === me.toy, color: colorOf(cv.dataset.toy) }));
+  if (!sqRaf) sqRaf = requestAnimationFrame(drawPortraits);
+
+  // maps: everyone sees the host's pick, only the host can change it
+  const isHost = room.host === socket.id;
+  const maps = document.getElementById("sq-maps");
+  if (!maps.children.length) {
+    maps.innerHTML = SQ.MAP_KEYS.map(k => {
+      const m = SQ.MAPS[k], hz = SQ.hazardOf(k);
+      return `<button class="sq-map" data-map="${k}"><canvas width="480" height="256"></canvas>
+        <span class="mname">${escHtml(m.name)}<span class="hz">${hz.icon} ${escHtml(hz.name)}</span></span>
+        <span class="mblurb">${escHtml(m.blurb)}</span></button>`;
+    }).join("");
+    maps.querySelectorAll(".sq-map").forEach(b => b.addEventListener("click", () => {
+      if (currentRoom.host === socket.id) socket.emit("squirrels-lobby", { code: currentRoom.code, map: b.dataset.map });
+    }));
+    // painting a map takes a moment, so one at a time after the page is up
+    const queue = [...maps.querySelectorAll(".sq-map")];
+    const next = () => {
+      const b = queue.shift();
+      if (!b) return;
+      b.querySelector("canvas").getContext("2d").drawImage(window.SQUIRRELS_MAPS.thumb(b.dataset.map), 0, 0);
+      setTimeout(next, 0);
+    };
+    setTimeout(next, 30);
+  }
+  maps.querySelectorAll(".sq-map").forEach(b => {
+    b.classList.toggle("on", b.dataset.map === room.lobby.map);
+    b.disabled = !isHost;
+  });
+}
+
+// The portraits idle: they blink now and then, and yours bobs and twitches.
+function drawPortraits() {
+  sqFrame++;
+  const A = window.SQUIRRELS_ART;
+  for (const p of sqPortraits) {
+    if (!p.cv.isConnected) continue;
+    const c = p.cv.getContext("2d");
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, p.cv.width, p.cv.height);
+    c.setTransform(2, 0, 0, 2, 0, 0);
+    c.translate(69, 131); c.scale(1.95, 1.95);
+    A.drawToy(c, p.key, {
+      face: 1, t: sqFrame, color: p.color,
+      bob: p.mine ? Math.sin(sqFrame / 8) * 1.2 : 0,
+      blink: (sqFrame + p.key.length * 37) % 200 < 6, twitch: p.mine && sqFrame % 90 < 8,
+    });
+  }
+  sqRaf = sqPortraits.length ? requestAnimationFrame(drawPortraits) : 0;
 }
 
 // ---- invite link ---------------------------------------------------------
