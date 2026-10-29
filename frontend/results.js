@@ -70,13 +70,29 @@ function squirrelsResults() {
   try { return JSON.parse(sessionStorage.getItem("squirrelsResults") || "null"); } catch (e) { return null; }
 }
 
+const SQUIRRELS_RESULTS_CSS = `
+@font-face{font-family:"Bangers";src:url("assets/fonts/Bangers-Regular.ttf") format("truetype");font-display:swap;}
+.sq-results{font-family:Bangers,Impact,"Arial Black",sans-serif;letter-spacing:.04em;}
+.sq-results .squirrels-winner{font-size:2.3rem;line-height:1.05;margin:0 0 1.1rem;color:#fff;transform:rotate(-2deg);
+  -webkit-text-stroke:2px #111;paint-order:stroke fill;text-shadow:3px 3px 0 #111;}
+.sq-results .score-item{background:#fffbe8;color:#111;border:3px solid #111;border-radius:4px;box-shadow:4px 4px 0 #111;font-size:1.35rem;}
+.sq-results .score-item:first-child{background:#f7c948;transform:rotate(-1deg);}
+.sq-results .score-item.me{outline:3px dashed #e94560;outline-offset:3px;}
+.sq-results .score-rank,.sq-results .score-points{color:#111;}
+.sq-results .score-name small{font-family:Nunito,"Segoe UI",sans-serif;letter-spacing:0;color:#444 !important;}
+.sq-results .score-name span{display:inline-block;background:var(--c);color:#111 !important;padding:.05rem .45rem 0;border:2px solid #111;box-shadow:2px 2px 0 #111;transform:rotate(-2deg);margin-bottom:.2rem;}
+`;
+
 function renderSquirrelsBoard(res) {
   const list = document.getElementById("scoreboard");
   list.innerHTML = "";
+  const style = document.createElement("style");
+  style.textContent = SQUIRRELS_RESULTS_CSS;
+  document.head.appendChild(style);
+  list.closest(".card").classList.add("sq-results");
   const winner = res.rows.find((r) => r.winner);
   const line = document.createElement("p");
   line.className = "squirrels-winner";
-  line.style.cssText = "font-size:1.15rem;font-weight:900;margin:0 0 1rem;";
   if (winner) {
     const who = document.createElement("span");
     who.style.color = winner.color;
@@ -95,8 +111,10 @@ function renderSquirrelsBoard(res) {
     rank.textContent = r.winner ? "🥇" : `${r.place}.`;
     const name = document.createElement("span");
     name.className = "score-name";
-    name.style.color = r.color;
-    name.textContent = r.name;
+    const who = document.createElement("span");
+    who.style.setProperty("--c", r.color);
+    who.textContent = r.name;
+    name.appendChild(who);
     const sub = document.createElement("small");
     sub.style.cssText = "display:block;color:#8892a4;font-weight:700;font-size:0.75rem;";
     sub.textContent = r.left.length
