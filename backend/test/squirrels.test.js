@@ -513,15 +513,35 @@ test("the launch speeds match v8", () => {
 });
 
 // ---------------------------------------------------------------- the retreat
+const HOLD = Math.round(2.5 * R.FPS);
+
+// fire a punch and run through the blast hold to the start of the retreat
 function firedPunch() {
   const { game, s, them } = duel(600);
   game.setInput(me(game).id, { t: "weapon", w: "punch" });
   game.setInput(me(game).id, { t: "fire", x: s.x + 50, y: s.y });
-  stepUntil(game, () => s.ground, 200);
+  assert.ok(stepUntil(game, () => game.phase === "retreat", 400), "never reached the retreat");
   return { game, s, them };
 }
 
-test("after an attack you can walk for up to 5 seconds, then the turn ends", () => {
+test("after a shot lands the camera holds 2.5 s with nobody moving, then the retreat starts", () => {
+  const { game, s } = duel(600);
+  game.setInput(me(game).id, { t: "weapon", w: "punch" });
+  game.setInput(me(game).id, { t: "fire", x: s.x + 50, y: s.y });
+  assert.ok(stepUntil(game, () => game.phase === "settle" && game.settleT > 0, 200));
+  const x0 = s.x;
+  game.setInput(me(game).id, { t: "move", dir: 1 });
+  assert.ok(!game.retreating());
+  assert.equal(game.snapshot().rt, 0, "no retreat timer in the hold");
+  let held = 0;
+  while (game.phase === "settle" && held < 400) { game.step(); held++; assert.equal(s.x, x0, "can't walk in the hold"); if (game.phase === "settle") assert.equal(game.retreatT, 0, "the retreat timer doesn't run in the hold"); }
+  assert.ok(held >= HOLD - 2 && held <= HOLD + 40, `held ${held} frames`);
+  assert.equal(game.phase, "retreat");
+  assert.equal(game.retreatT, R.RETREAT_SECONDS * R.FPS);
+  assert.equal(game.snapshot().rt, R.RETREAT_SECONDS);
+});
+
+test("in the retreat you can walk for up to 5 seconds, then the turn ends", () => {
   const { game, s } = firedPunch();
   const cur = game.cur, start = game.retreatT;
   assert.ok(game.retreating());
@@ -536,7 +556,7 @@ test("after an attack you can walk for up to 5 seconds, then the turn ends", () 
   game.setInput(me(game).id, { t: "move", dir: 0 });
   for (let i = 0; i < start; i++) game.step();
   assert.ok(!game.retreating());
-  assert.ok(stepUntil(game, () => game.cur !== cur, 200), "the turn ends");
+  assert.ok(game.cur !== cur || game.phase !== "retreat", "the turn ends");
 });
 
 test("End turn ends the retreat at once", () => {
@@ -544,7 +564,19 @@ test("End turn ends the retreat at once", () => {
   const cur = game.cur;
   game.setInput(me(game).id, { t: "end" });
   assert.ok(!game.retreating());
-  assert.ok(stepUntil(game, () => game.cur !== cur, Math.round(2.5 * R.FPS) + 40));
+  assert.ok(game.cur !== cur || game.phase !== "settle");
+});
+
+test("End turn during the blast hold ends the turn", () => {
+  const { game, s } = duel(600);
+  const cur = game.cur;
+  game.setInput(me(game).id, { t: "weapon", w: "punch" });
+  game.setInput(me(game).id, { t: "fire", x: s.x + 50, y: s.y });
+  assert.ok(stepUntil(game, () => game.phase === "settle", 200));
+  game.setInput(me(game).id, { t: "end" });
+  assert.notEqual(game.phase, "settle");
+  assert.notEqual(game.phase, "retreat");
+  assert.notEqual(game.cur, cur);
 });
 
 test("running out of steps ends the retreat", () => {
@@ -553,10 +585,21 @@ test("running out of steps ends the retreat", () => {
   assert.ok(game.retreating());
   for (let i = 0; i < 40; i++) game.step();
   assert.ok(!game.retreating());
-  assert.ok(game.retreatT > 0, "before the 5 seconds were up");
+  assert.ok(game.phase !== "retreat", "ended long before the 5 seconds were up");
 });
 
-test("the retreat runs while the shot is still flying", () => {
+test("no steps left: no retreat, straight to the next turn after the hold", () => {
+  const { game, s } = duel(600);
+  const cur = game.cur;
+  game.setInput(me(game).id, { t: "weapon", w: "punch" });
+  game.setInput(me(game).id, { t: "fire", x: s.x + 50, y: s.y });
+  game.steps = 0;
+  let sawRetreat = false;
+  assert.ok(stepUntil(game, () => { sawRetreat = sawRetreat || game.phase === "retreat"; return game.cur !== cur || game.phase !== "settle" && game.phase !== "flight"; }, 400));
+  assert.ok(!sawRetreat);
+});
+
+test("the shooter can't move while the shot is still flying", () => {
   const { game, s } = duel(800);
   game.setInput(me(game).id, { t: "fire", ang: -Math.PI / 2 + 0.1, pow: 0.9 });
   assert.equal(game.phase, "flight");
@@ -564,8 +607,8 @@ test("the retreat runs while the shot is still flying", () => {
   const x0 = s.x;
   for (let i = 0; i < 10; i++) game.step();
   assert.equal(game.phase, "flight");
-  assert.ok(s.x < x0);
-  assert.ok(game.snapshot().rt > 0);
+  assert.equal(s.x, x0);
+  assert.equal(game.snapshot().rt, 0);
 });
 
 test("after the blast settles the turn waits 2.5 seconds before the next squirrel", () => {
