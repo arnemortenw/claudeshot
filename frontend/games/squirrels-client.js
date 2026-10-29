@@ -10,6 +10,11 @@
 // the active squirrel, then the shot, then where it landed; each laptop has its
 // own zoom and whole-map view. The HUD is laid out on a 1200 x 640 box scaled
 // to the stage, so it lines up with the canvas at any size.
+//
+// The weapon tray along the bottom is always your own: greyed out until your
+// turn, locked slots say how they unlock. Shots and the Blaster are aimed by
+// dragging back; Punch, Bite, Coconut and Teleport by clicking a spot. While
+// you point, the other laptops see the same guide.
 
 (function () {
   const R = window.SQUIRRELS_RULES;
@@ -145,14 +150,16 @@
   // ---------------------------------------------------------------- camera
   // cam.x, cam.y is the world point at the middle of the canvas, cam.z the scale.
   const w2s = (x, y) => [(x - S.cam.x) * S.cam.z + SW / 2, (y - S.cam.y) * S.cam.z + SH / 2];
+  const s2w = (x, y) => [(x - SW / 2) / S.cam.z + S.cam.x, (y - SH / 2) / S.cam.z + S.cam.y];
   function updateCam() {
     const cam = S.cam, st = S.st;
     const whole = cam.overview || !st || st.ph === "loading" || st.ph === "over";
     cam.z += ((whole ? ZMIN : cam.zoom) - cam.z) * 0.07;
     let tx = W / 2, ty = H / 2, k = 0.07;
     if (!whole) {
-      if (st.shot && S.shotDisp) { tx = S.shotDisp.x; ty = Math.max(S.shotDisp.y, 60); k = 0.12; }
-      else if ((st.ph === "settle" || st.ph === "round") && S.focus) [tx, ty] = S.focus;
+      if (S.shotDisp.length) { tx = S.shotDisp[0].x; ty = Math.max(S.shotDisp[0].y, 60); k = 0.12; }
+      else if (st.ph === "settle" && st.rt > 0 && st.act >= 0 && S.disp[st.act]) { tx = S.disp[st.act].x; ty = S.disp[st.act].y + 15; }
+      else if ((st.ph === "settle" || st.ph === "round" || st.ph === "reward") && S.focus) [tx, ty] = S.focus;
       else if (st.act >= 0 && S.disp[st.act]) { tx = S.disp[st.act].x; ty = S.disp[st.act].y + 15; }
     }
     cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
@@ -206,13 +213,30 @@
   .sq-dots i{width:12px;height:12px;border-radius:50%;border:2px solid #111;background:#fff;box-sizing:border-box;}
   .sq-dots i.done{background:var(--c);opacity:.6;}
   .sq-dots i.now{background:var(--c);transform:scale(1.35);}
-  .sq-watch{position:absolute;bottom:50px;left:50%;transform:translateX(-50%) rotate(-1deg);font-size:20.8px;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:2.4px 12.8px;color:#111;white-space:nowrap;opacity:0;transition:opacity .2s;}
+  .sq-watch{position:absolute;bottom:112px;left:50%;transform:translateX(-50%) rotate(-1deg);font-size:20.8px;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:2.4px 12.8px;color:#111;white-space:nowrap;opacity:0;transition:opacity .2s;}
   .sq-watch.show{opacity:1;}
   .sq-banner{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%) scale(.6) rotate(-4deg);text-align:center;opacity:0;transition:opacity .2s,transform .3s cubic-bezier(.3,1.8,.5,1);white-space:nowrap;}
   .sq-banner.show{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(-4deg);}
   .sq-banner .big{display:inline-block;font-size:80px;line-height:1;padding:.15em .45em .05em;background:#fffbe8 radial-gradient(rgba(233,69,96,.35) 2px,transparent 2.4px) 0 0/10px 10px;border:5px solid #111;box-shadow:8px 8px 0 #111;-webkit-text-stroke:3px #111;paint-order:stroke fill;text-shadow:4px 4px 0 #111;}
   .sq-banner .sub{display:inline-block;font-size:24px;margin-top:11.2px;background:#111;color:#fff;padding:2.4px 11.2px;transform:rotate(3deg);}
-  .sq-how{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:16.8px;background:#111;color:#fff;padding:3.2px 12.8px;white-space:nowrap;border:2px solid #fff;}
+  .sq-tray-wrap{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:7px;}
+  .sq-how{font-size:16.8px;background:#111;color:#fff;padding:3.2px 12.8px;white-space:nowrap;border:2px solid #fff;}
+  .sq-tray{display:flex;gap:6px;pointer-events:auto;}
+  .sq-slot{position:relative;width:58px;height:58px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px;background:#fffbe8;color:#111;border:3px solid #111;border-radius:3px;box-shadow:3px 3px 0 #111;font:inherit;font-size:12.5px;line-height:1;letter-spacing:.03em;padding:0 2px 4px;cursor:pointer;white-space:nowrap;}
+  .sq-slot .wi{font-size:21px;line-height:1;margin-bottom:1px;}
+  .sq-slot .dm{font-size:10.5px;opacity:.7;letter-spacing:0;}
+  .sq-slot kbd{position:absolute;top:1px;left:3px;font:inherit;font-size:11px;opacity:.6;}
+  .sq-slot .cnt{position:absolute;top:-9px;right:-8px;background:#b06cff;color:#fff;border:2px solid #111;font-size:12px;padding:1px 4px 0;transform:rotate(6deg);}
+  .sq-slot.on{background:#f7c948;transform:rotate(-3deg) translateY(-4px);box-shadow:4px 5px 0 #111;}
+  .sq-slot.locked{cursor:default;background:#d8d2c0;border-style:dashed;box-shadow:none;color:#6a6458;}
+  .sq-slot.locked .wi{filter:grayscale(1);opacity:.45;}
+  .sq-slot.locked .dm{opacity:1;font-size:9.5px;}
+  .sq-slot.locked::before{content:"🔒";position:absolute;top:1px;right:2px;font-size:10px;}
+  .sq-slot:disabled:not(.locked){cursor:default;opacity:.55;}
+  .sq-slot.fresh{animation:sq-fresh .5s 6 alternate;}
+  @keyframes sq-fresh{to{transform:translateY(-7px) rotate(-4deg) scale(1.08);box-shadow:0 0 0 4px #f7c948,5px 6px 0 #111;}}
+  .sq-loot{margin-top:4px;font-size:12px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sq-timer.run{background:#4fc3f7;}
   .sq-keys{position:absolute;bottom:12px;left:12px;display:none;font-size:13.1px;color:#111;line-height:1.15;background:#fffbe8;border:3px solid #111;box-shadow:3px 3px 0 #111;padding:4.8px 8.8px;}
   .sq-end{position:absolute;right:14px;bottom:62px;pointer-events:auto;background:#e94560;color:#fff;border:3px solid #111;border-radius:3px;font:inherit;font-size:23.2px;letter-spacing:.05em;padding:4px 14.4px 1.6px;cursor:pointer;box-shadow:4px 4px 0 #111;transform:rotate(-2deg);text-shadow:2px 2px 0 #111;}
   .sq-end:hover{transform:rotate(-2deg) scale(1.06);}
@@ -252,8 +276,8 @@
           </div>
           <div class="sq-watch" id="sq-watch"></div>
           <div class="sq-banner" id="sq-banner"><div class="big" id="sq-banner-big"></div><div class="sub" id="sq-banner-sub"></div></div>
-          <div class="sq-keys" id="sq-keys">← → walk · Space jump · Enter end turn<br>Wheel or − + zoom · Z map</div>
-          <div class="sq-how" id="sq-how">${R.WEAPONS.bazooka.icon} ${R.WEAPONS.bazooka.how}</div>
+          <div class="sq-keys" id="sq-keys">← → walk · Space jump · Enter end turn<br>1–0 weapons · Wheel or − + zoom · Z map</div>
+          <div class="sq-tray-wrap"><div class="sq-how" id="sq-how">${R.WEAPONS.bazooka.icon} ${R.WEAPONS.bazooka.how}</div><div class="sq-tray" id="sq-tray"></div></div>
           <button class="sq-end" id="sq-end" style="display:none">End turn ⏎</button>
           <div class="sq-zoom">
             <button id="sq-zoom-out" title="Zoom out (−)">−</button>
@@ -296,8 +320,11 @@
       const d = S.disp[i];
       if (!d || Math.hypot(d.x - q.x, d.y - q.y) > 90) S.disp[i] = { x: q.x, y: q.y };
     });
-    if (!st.shot) S.shotDisp = null;
-    else if (!S.shotDisp || Math.hypot(S.shotDisp.x - st.shot.x, S.shotDisp.y - st.shot.y) > 120) S.shotDisp = { x: st.shot.x, y: st.shot.y };
+    // ... and so do the shots'
+    S.shotDisp = st.shots.map((p, i) => {
+      const d = S.shotDisp[i];
+      return d && d.type === p.type && Math.hypot(d.x - p.x, d.y - p.y) < 120 ? d : { x: p.x, y: p.y, type: p.type };
+    });
     if (prevTurn !== st.turnNo || st.ph !== "aim") S.drag = null;
     if (prevTurn !== st.turnNo) S.focus = null;
     if (!myTurn() && S.dir) S.dir = 0;
@@ -318,6 +345,30 @@
       for (let i = 0; i < (e.big ? 24 : 12); i++) S.particles.push({ x: e.x, y: WATER, vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 6, life: 50, color: "#9fd3ea", size: 3, g: 0.25 });
     } else if (e.k === "banner") {
       showBanner(e.big, e.sub, e.color, e.ms);
+    } else if (e.k === "beam") {
+      S.beams.push({ ...e, life: 22 });
+      S.focus = [e.x, e.y];
+      S.shake = 6;
+      const d = Math.hypot(e.x - e.x0, e.y - e.y0) || 1;
+      for (let i = 0; i < 10; i++) S.particles.push({ x: e.x0, y: e.y0, vx: ((e.x - e.x0) / d) * 3 + (Math.random() - 0.5) * 2, vy: ((e.y - e.y0) / d) * 3 + (Math.random() - 0.5) * 2, life: 14, color: "#ffe08a", size: 2, g: 0 });
+    } else if (e.k === "melee") {
+      S.focus = [e.x, e.y];
+      S.shake = 8;
+      addBurst(e.x, e.y, R.WEAPONS[e.w].shout, "#f7c948", "#4fc3f7", 20);
+    } else if (e.k === "tele") {
+      sparkle(e.x0, e.y0); sparkle(e.x, e.y);
+      const i = S.st ? S.st.act : -1;
+      if (S.disp[i]) S.disp[i] = { x: e.x, y: e.y };
+    } else if (e.k === "unlock") {
+      for (const w of e.w) S.fresh[w] = performance.now() + 3200;
+      renderTray();
+    }
+  }
+
+  function sparkle(x, y) {
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * 6.28, sp = Math.random() * 3;
+      S.particles.push({ x, y: y - 20, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 40, color: i % 2 ? "#d7b4ff" : "#fff6a8", size: 2.4, g: 0 });
     }
   }
 
@@ -408,6 +459,11 @@
   }
 
   const myTurn = () => S.st && S.st.ph === "aim" && S.st.cur === S.me && S.me >= 0;
+  // walking, jumping and End turn also work in the retreat after your attack
+  const canMove = () => S.st && S.st.cur === S.me && S.me >= 0 && (S.st.ph === "aim" || S.st.rt > 0);
+  const weaponOf = (slot) => (S.st && S.st.wp && S.st.wp[slot]) || "bazooka";
+  const kindOf = (slot) => R.WEAPONS[weaponOf(slot)].kind;
+  const hasWeapon = (slot, w) => w === "teleport" ? S.st.tp[slot] > 0 : S.st.un.includes(w);
   const send = (data) => S.socket.emit("squirrels-input", data);
   const playerAlive = (slot) => S.st.sq.some((q, i) => S.names[i].p === slot && !q.dead);
 
@@ -418,6 +474,7 @@
       <div class="sq-team" id="sq-team${p.slot}" style="--c:${p.color}">
         <div class="tn"><canvas width="68" height="68" data-slot="${p.slot}" title="${esc(A.TOYS[A.toyFor(p.slot)].name)}"></canvas><span>${esc(p.name)}</span>${p.slot === S.me ? "<small>YOU</small>" : ""}</div>
         ${S.names.map((n, i) => n.p === p.slot ? `<div class="sq-row" id="sq-row${i}"><span class="n">${esc(n.name)}</span><span class="bar"><b></b></span><span class="hp"></span></div>` : "").join("")}
+        <div class="sq-loot" id="sq-loot${p.slot}"></div>
       </div>`).join("");
     document.getElementById("sq-side-l").innerHTML = side(0);
     document.getElementById("sq-side-r").innerHTML = side(1);
@@ -457,11 +514,19 @@
       row.querySelector("b").style.width = q.hp + "%";
       row.querySelector(".hp").textContent = q.hp;
     });
-    const live = st.ph === "aim";
+    // what each player has beyond the starting four
+    S.players.forEach((p) => {
+      const got = R.ORDER.filter((k) => !R.START.includes(k) && !R.WEAPONS[k].pickup && hasWeapon(p.slot, k))
+        .map((k) => R.WEAPONS[k].icon + (k === "teleport" && st.tp[p.slot] > 1 ? "×" + st.tp[p.slot] : "")).join(" ");
+      const text = `Unlocked: ${got || "nothing yet"}`, loot = $("sq-loot" + p.slot);
+      if (loot.textContent !== text) loot.textContent = text;
+    });
+    const live = st.ph === "aim", run = st.rt > 0;
     const tm = $("sq-timer");
-    tm.textContent = live || st.ph === "banner" ? st.timer : "–";
-    tm.classList.toggle("low", live && st.timer <= 5);
-    tm.classList.toggle("idle", !live);
+    tm.textContent = run ? st.rt : live || st.ph === "banner" ? st.timer : "–";
+    tm.classList.toggle("low", !run && live && st.timer <= 5);
+    tm.classList.toggle("run", run);
+    tm.classList.toggle("idle", !live && !run);
     const w = st.wind;
     $("sq-wind-label").textContent = w === 0 ? "NO WIND" : `WIND ${w < 0 ? "◀" : ""} ${Math.abs(w * 10).toFixed(0)} ${w > 0 ? "▶" : ""}`;
     const bar = $("sq-wind-bar"); bar.style.width = Math.abs(w) * 50 + "%"; bar.style.left = w < 0 ? (50 + w * 50) + "%" : "50%";
@@ -471,15 +536,48 @@
     if ($("sq-dots").innerHTML !== dots) $("sq-dots").innerHTML = dots;
     $("sq-steps-label").textContent = `👣 STEPS ${Math.ceil(st.steps)}`;
     $("sq-steps-bar").style.width = (st.steps / R.MAX_STEPS) * 100 + "%";
-    $("sq-end").style.display = myTurn() ? "" : "none";
-    $("sq-keys").style.display = myTurn() ? "block" : "none";
+    $("sq-end").style.display = canMove() ? "" : "none";
+    $("sq-keys").style.display = canMove() ? "block" : "none";
     S.panelRects = null;
     const cur = S.players[st.cur];
     const msg = st.ph === "loading" ? "Waiting for everyone to load…"
+      : run ? (st.cur === S.me ? `🏃 Retreat! ${st.rt} s to get away` : `🏃 ${cur.name} is retreating! ${st.rt} s`)
       : st.ph === "aim" ? (st.cur === S.me ? "Your turn — everyone is watching" : `${cur.name} is aiming…`)
       : st.ph === "flight" ? "Incoming!" : "";
     $("sq-watch").textContent = msg;
     $("sq-watch").classList.toggle("show", !!msg);
+    renderTray();
+  }
+
+  // Your own ten slots, keys 1-9 and 0. They work on your turn, before you
+  // attack; the line above says what the selected one does, or on someone
+  // else's turn what they picked.
+  function renderTray() {
+    const st = S.st, tray = document.getElementById("sq-tray");
+    if (!st || !st.un || !tray || S.me < 0) return;
+    const now = performance.now(), mine = S.me, pick = weaponOf(mine);
+    const usable = st.cur === mine && (st.ph === "aim" || st.ph === "banner") && !st.fired;
+    const html = R.ORDER.map((k, i) => {
+      const w = R.WEAPONS[k], have = hasWeapon(mine, k), cnt = k === "teleport" ? st.tp[mine] : 0;
+      const cls = `sq-slot${pick === k ? " on" : ""}${have ? "" : " locked"}${have && S.fresh[k] > now ? " fresh" : ""}`;
+      return `<button class="${cls}" data-w="${k}" title="${esc(have ? w.how : w.name + " · " + R.lockText(k))}"${have && usable ? "" : " disabled"}>` +
+        `<kbd>${(i + 1) % 10}</kbd><span class="wi">${w.icon}</span>${esc(w.short)}<span class="dm">${have ? w.dmgText : R.lockText(k)}</span>` +
+        `${cnt ? `<span class="cnt">×${cnt}</span>` : ""}</button>`;
+    }).join("");
+    if (html !== S.trayHtml) { tray.innerHTML = html; S.trayHtml = html; }
+    const cur = S.players[st.cur], w = R.WEAPONS[weaponOf(st.cur)];
+    let how = `${w.icon} ${w.how}`;
+    if (st.cur === mine && st.rt > 0) how = `👣 ${st.rt} seconds to walk or jump away with your ${Math.floor(st.steps)} steps left, or End turn (Enter)`;
+    else if (st.cur !== mine && cur && (st.ph === "aim" || st.ph === "banner")) how = `${cur.name} picked ${w.icon} ${w.name}`;
+    else if (st.cur !== mine) how = `${R.WEAPONS[pick].icon} ${R.WEAPONS[pick].how}`;
+    const line = document.getElementById("sq-how");
+    if (line.textContent !== how) line.textContent = how;
+  }
+
+  function pickWeapon(w) {
+    if (!S.st || S.st.cur !== S.me || S.st.fired || !(S.st.ph === "aim" || S.st.ph === "banner") || !hasWeapon(S.me, w)) return;
+    S.drag = null;
+    send({ t: "weapon", w });
   }
 
   // A lost connection covers the stage until socket.io is back; game.js then
@@ -528,7 +626,11 @@
       if (e.code === "Minus" || e.code === "NumpadSubtract") setZoom(S.cam.zoom - 0.3);
       if (e.code === "Equal" || e.code === "NumpadAdd") setZoom(S.cam.zoom + 0.3);
     }
-    if (!myTurn()) return;
+    if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && /^Digit[0-9]$/.test(e.code)) {
+      const n = +e.code.slice(5);
+      pickWeapon(R.ORDER[(n + 9) % 10]);
+    }
+    if (!canMove()) return;
     if (e.code === "Space" && !e.repeat) send({ t: "jump" });
     if (e.code === "Enter" && !e.repeat) send({ t: "end" });
     updateDir();
@@ -545,10 +647,13 @@
   }
   function updateDir() {
     const k = S.keys;
-    const dir = myTurn() ? (k.ArrowRight || k.KeyD ? 1 : 0) - (k.ArrowLeft || k.KeyA ? 1 : 0) : 0;
+    const dir = canMove() ? (k.ArrowRight || k.KeyD ? 1 : 0) - (k.ArrowLeft || k.KeyA ? 1 : 0) : 0;
     if (dir !== S.dir) { S.dir = dir; send({ t: "move", dir }); }
   }
 
+  // Shots and the Blaster: drag back and let go. The click weapons fire where
+  // you let go, and send where you point while you move the mouse.
+  const clickKind = () => { const k = kindOf(S.me); return k !== "shot" && k !== "beam"; };
   function onPointerDown(e) {
     if (!myTurn()) return;
     const p = toCanvas(e);
@@ -556,16 +661,27 @@
     S.cv.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e) {
+    const p = toCanvas(e), now = performance.now();
+    S.hover = p;
+    if (myTurn() && clickKind()) {
+      if (now - S.aimSent > SEND_AIM_MS) { S.aimSent = now; const [x, y] = s2w(p.x, p.y); send({ t: "aim", x: Math.round(x), y: Math.round(y) }); }
+      return;
+    }
     if (!S.drag) return;
-    const p = toCanvas(e);
     S.drag.x1 = p.x; S.drag.y1 = p.y;
-    const now = performance.now(), a = currentAim();
+    const a = currentAim();
     if (a.len > 10 && now - S.aimSent > SEND_AIM_MS) { S.aimSent = now; send({ t: "aim", ang: a.ang, pow: a.pow }); }
   }
-  function onPointerUp() {
+  function onPointerUp(e) {
     const a = currentAim();
     S.drag = null;
     if (!a || !myTurn()) return;
+    if (clickKind()) {
+      const [x, y] = s2w(toCanvas(e).x, toCanvas(e).y);
+      send({ t: "fire", x: Math.round(x), y: Math.round(y) });
+      if (kindOf(S.me) !== "teleport") S.fired = true;
+      return;
+    }
     if (a.len >= R.MIN_DRAG) { send({ t: "fire", ang: a.ang, pow: a.pow }); S.fired = true; }
     else send({ t: "aim", ang: a.ang, pow: 0 });
   }
@@ -579,7 +695,7 @@
 
     // drawn positions ease towards the server's
     st.sq.forEach((q, i) => { const d = S.disp[i]; d.x += (q.x - d.x) * 0.4; d.y += (q.y - d.y) * 0.4; });
-    if (st.shot && S.shotDisp) { S.shotDisp.x += (st.shot.x - S.shotDisp.x) * 0.5; S.shotDisp.y += (st.shot.y - S.shotDisp.y) * 0.5; }
+    S.shotDisp.forEach((d, i) => { const p = st.shots[i]; if (p) { d.x += (p.x - d.x) * 0.5; d.y += (p.y - d.y) * 0.5; } });
     // blinks and twitches, now and then, for each squirrel on this laptop
     st.sq.forEach((q, i) => {
       const f = S.fx[i] || (S.fx[i] = { blink: 0, twitch: 0, pop: 0, hp: q.hp });
@@ -600,10 +716,30 @@
 
     const act = st.act >= 0 ? st.sq[st.act] : null, actD = act ? S.disp[st.act] : null;
     // the aim: yours from your drag, anyone else's as the server relays it
-    const aim = myTurn() ? (S.drag ? currentAim() : null) : st.ph === "aim" ? st.aim : null;
-    if (act && aim && aim.pow > 0 && (!aim.len || aim.len > 10)) drawAim(ctx, actD, aim);
-
+    const kind = st.cur >= 0 ? kindOf(st.cur) : "shot";
     if (act && st.ph === "aim") {
+      if (kind === "shot" || kind === "beam") {
+        const aim = myTurn() ? (S.drag ? currentAim() : null) : st.aim && st.aim.ang != null ? st.aim : null;
+        if (aim && aim.pow > 0 && (!aim.len || aim.len > 10)) (kind === "beam" ? drawBeamAim : drawAim)(ctx, actD, aim, weaponOf(st.cur));
+      } else {
+        // where the click weapon points: your mouse, or what the server relays
+        let pt = null;
+        if (myTurn()) { if (S.hover) { const [x, y] = s2w(S.hover.x, S.hover.y); pt = { x, y }; } }
+        else if (st.aim && st.aim.x != null) pt = st.aim;
+        drawClickAim(ctx, act, actD, kind, pt, st.cur);
+      }
+    }
+    S.beams.forEach((b) => {
+      ctx.globalAlpha = Math.min(1, b.life / 10);
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(b.x0, b.y0); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.strokeStyle = "#ffe08a"; ctx.lineWidth = 3.5; ctx.stroke();
+      ctx.globalAlpha = 1;
+      b.life--;
+    });
+    S.beams = S.beams.filter((b) => b.life > 0);
+
+    if (act && (st.ph === "aim" || st.rt > 0)) {
       const left = st.steps / R.MAX_STEPS;
       ctx.fillStyle = "rgba(0,0,0,.6)"; rr(ctx, actD.x - 22, actD.y + 8, 44, 7, 3.5); ctx.fill();
       ctx.fillStyle = "#7ec8e3"; rr(ctx, actD.x - 21, actD.y + 9, 42 * left, 5, 2.5); ctx.fill();
@@ -622,15 +758,7 @@
       ctx.restore();
     });
 
-    if (st.shot && S.shotDisp) {
-      const p = S.shotDisp;
-      if (S.frame % 2 === 0) S.particles.push({ x: p.x, y: p.y, vx: 0, vy: -0.3, life: 30, color: "rgba(220,220,230,.5)", size: 3, g: 0, smoke: true });
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(st.shot.vy, st.shot.vx)); ctx.scale(1.4, 1.4);
-      ctx.strokeStyle = "#111"; ctx.lineWidth = 1.4;
-      ell(ctx, 1, 0, 7, 5); ctx.fillStyle = "#a0612e"; ctx.fill(); ctx.stroke();
-      ell(ctx, -5, 0, 3, 6); ctx.fillStyle = "#5e3a1a"; ctx.fill(); ctx.stroke();
-      ctx.restore();
-    }
+    st.shots.forEach((p, i) => drawShot(ctx, p, S.shotDisp[i] || p));
 
     S.particles.forEach((p) => {
       p.x += p.vx; p.y += p.vy; p.vy += p.g; p.life--;
@@ -681,9 +809,11 @@
     ctx.globalAlpha = 1;
     S.popups = S.popups.filter((p) => p.life > 0);
 
-    // the coach hint, until you've fired once this match
-    if (myTurn() && !S.drag && act && !S.fired) {
-      const hint = "Drag back to aim · let go to fire";
+    // the coach hint: how to aim the weapon you hold (for shots, until you've
+    // fired once this match)
+    const hint = myTurn() && !S.drag && act && ({ shot: S.fired ? "" : "Drag back to aim · let go to fire", beam: "Drag back to point · let go to blast",
+      melee: "Click to hit · they must be right next to you", strike: "Click a spot to drop the coconut", teleport: "Click where you want to pop up" })[kind];
+    if (hint) {
       ctx.font = `18px ${FONT}`;
       const hw = ctx.measureText(hint).width + 24;
       const [ax, ay] = w2s(actD.x, actD.y - 66 * SIZE), [, fy] = w2s(actD.x, actD.y);
@@ -745,13 +875,13 @@
         col.forEach((a) => { a.cx = edge === "l" ? AM + c * 130 : SW - AM - c * 130; });
       }
     }
-    // along the top, between the panels; along the bottom, above the weapon line
+    // along the top, between the panels; along the bottom, above the weapon tray
     const x0 = left ? left.x1 + AM + 10 : AM, x1 = right ? right.x0 - AM - 10 : SW - AM;
     for (const edge of ["t", "b"]) {
       let next = -Infinity;
       list.filter((a) => a.edge === edge).sort((a, b) => a.x - b.x).forEach((a) => {
         a.cx = Math.max(next, Math.max(x0, Math.min(x1, a.x)));
-        a.cy = edge === "t" ? 112 : yMax - 20;
+        a.cy = edge === "t" ? 112 : SH - 150;
         next = a.cx + 96;
       });
     }
@@ -774,8 +904,8 @@
   }
 
   // The slingshot band, the first part of the path (no wind) and the power bar.
-  function drawAim(ctx, s, aim) {
-    const w = R.WEAPONS.bazooka, sp = 3 + aim.pow * w.speed, ang = aim.ang, z = S.cam.z;
+  function drawAim(ctx, s, aim, weapon = "bazooka") {
+    const w = R.WEAPONS[weapon], sp = 3 + aim.pow * w.speed, ang = aim.ang, z = S.cam.z;
     const hx = s.x, hy = s.y - 24, back = (aim.pow * R.POWER_DRAG * 0.3) / z;
     const k = Math.max(1, 1.2 / z);                // stays readable when zoomed out
     ctx.strokeStyle = "rgba(160,100,50,.95)"; ctx.lineWidth = 2.5 * k;
@@ -790,6 +920,86 @@
     ctx.fillStyle = aim.pow > 0.85 ? "#e94560" : "#f7c948"; rr(ctx, hx - 22 * k, hy + 30 + 1.5 * k, 44 * k * aim.pow, 5 * k, 2.5); ctx.fill();
   }
 
+  // The Nut Blaster: a dashed straight guide from the squirrel.
+  function drawBeamAim(ctx, s, aim) {
+    const ang = aim.ang, k = Math.max(1, 1.2 / S.cam.z);
+    const ox = s.x + Math.cos(ang) * 18, oy = s.y - 24 + Math.sin(ang) * 18;
+    ctx.lineCap = "round"; ctx.setLineDash([10 * k, 8 * k]);
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(ang) * 260, oy + Math.sin(ang) * 260);
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 5 * k; ctx.stroke();
+    ctx.strokeStyle = "#ffe08a"; ctx.lineWidth = 2.5 * k; ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Punch and Bite: the arc in front of the squirrel on the side you point at.
+  // Coconut: a drop line from the sky and the blast circle. Teleport: a ghost
+  // of your squirrel where it will pop up.
+  function drawClickAim(ctx, q, d, kind, pt, slot) {
+    const k = Math.max(1, 1.2 / S.cam.z);
+    ctx.lineCap = "round";
+    if (kind === "melee") {
+      const face = pt ? (pt.x >= d.x ? 1 : -1) : q.face;
+      const a0 = face > 0 ? -1 : Math.PI - 1;
+      ctx.setLineDash([6 * k, 5 * k]);
+      ctx.beginPath(); ctx.arc(d.x, d.y - 20, R.MELEE_REACH, a0, a0 + 2);
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 5 * k; ctx.stroke();
+      ctx.strokeStyle = "#fffbe8"; ctx.lineWidth = 2.5 * k; ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    if (!pt) return;
+    if (kind === "strike") {
+      ctx.setLineDash([8 * k, 7 * k]);
+      ctx.beginPath(); ctx.moveTo(pt.x, pt.y - 1200); ctx.lineTo(pt.x, pt.y);
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 5 * k; ctx.stroke();
+      ctx.strokeStyle = "#ff7b39"; ctx.lineWidth = 2.5 * k; ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, R.WEAPONS.coconut.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,123,57,.15)"; ctx.fill();
+      ctx.strokeStyle = "#111"; ctx.lineWidth = 5 * k; ctx.stroke();
+      ctx.strokeStyle = "#ff7b39"; ctx.lineWidth = 2.5 * k; ctx.stroke();
+    } else if (kind === "teleport") {
+      ctx.save(); ctx.globalAlpha = 0.5; ctx.translate(pt.x, pt.y); ctx.scale(SIZE, SIZE);
+      A.drawToy(ctx, A.toyFor(slot), { color: S.players[slot].color, face: q.face, t: S.frame });
+      ctx.restore();
+    }
+  }
+
+  // Shots in the air, in the pop-art ink.
+  function drawShot(ctx, p, d) {
+    const smoky = p.type === "bazooka" || p.type === "cluster";
+    if (smoky && S.frame % 2 === 0) S.particles.push({ x: d.x, y: d.y, vx: 0, vy: -0.3, life: 30, color: "rgba(220,220,230,.5)", size: 3, g: 0, smoke: true });
+    ctx.save(); ctx.translate(d.x, d.y); ctx.scale(1.4, 1.4);
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 1.4;
+    const fill = (c) => { ctx.fillStyle = c; ctx.fill(); ctx.stroke(); };
+    const spin = S.frame * 0.15 * (p.vx >= 0 ? 1 : -1);
+    if (p.type === "bazooka") {
+      ctx.rotate(Math.atan2(p.vy, p.vx));
+      ell(ctx, 1, 0, 7, 5); fill("#a0612e");
+      ell(ctx, -5, 0, 3, 6); fill("#5e3a1a");
+    } else if (p.type === "cluster") {
+      ctx.rotate(Math.atan2(p.vy, p.vx));
+      ell(ctx, 0, 0, 9, 5.5); fill("#8a5a2b");
+      ctx.lineWidth = 1; for (let i = -6; i <= 6; i += 3) { ctx.beginPath(); ctx.moveTo(i - 2, -4); ctx.lineTo(i + 1, 0); ctx.lineTo(i - 2, 4); ctx.stroke(); }
+    } else if (p.type === "pine") {
+      ctx.rotate(spin); ell(ctx, 0, 0, 3.4, 2.3); fill("#d9b77a");
+    } else if (p.type === "coconut") {
+      ctx.rotate(spin * 0.4);
+      ell(ctx, 0, 0, 10, 10); fill("#6b4426");
+      ctx.fillStyle = "#2b1a0c"; [[-3, -2], [3, -2], [0, 3]].forEach(([x, y]) => { ell(ctx, x, y, 1.5, 1.5); ctx.fill(); });
+    } else {
+      ctx.save(); ctx.rotate(spin);
+      ell(ctx, 0, 0, 6, 6); fill("#6b4a2b");
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+      ctx.restore();
+      if (p.fuse) {
+        ctx.font = `12px ${FONT}`; ctx.textAlign = "center"; ctx.lineJoin = "round";
+        ctx.lineWidth = 3; ctx.strokeText(p.fuse, 0, -10); ctx.fillStyle = "#fff"; ctx.fillText(p.fuse, 0, -10);
+      }
+    }
+    ctx.restore();
+  }
+
   // ---------------------------------------------------------------- entry points
   window.initSquirrelsClient = function (socket, myId, room) {
     cleanupSquirrelsClient();
@@ -799,14 +1009,16 @@
     S = {
       socket, room, myName: sessionStorage.getItem("myName"), page, cv, ctx: cv.getContext("2d"),
       terrain: buildTerrain(), carved: 0, syncing: false, players: null, names: null, me: -1,
-      st: null, disp: [], fx: [], shotDisp: null, particles: [], popups: [], bursts: [], shake: 0, frame: 0,
-      keys: {}, dir: 0, drag: null, aimSent: 0, raf: 0, fired: false, focus: null, panelRects: null,
+      st: null, disp: [], fx: [], shotDisp: [], particles: [], popups: [], bursts: [], beams: [], shake: 0, frame: 0,
+      keys: {}, dir: 0, drag: null, hover: null, aimSent: 0, raf: 0, fired: false, focus: null, panelRects: null,
+      fresh: {}, trayHtml: "",
       cam: { x: W / 2, y: H / 2, z: ZMIN, zoom: ZSTART, overview: false },
     };
     S.handlers = {
       init: onInit, state: onState, over: onOver,
       keydown: onKeyDown, keyup: onKeyUp, blur: onBlur,
-      end: () => { if (myTurn()) send({ t: "end" }); },
+      end: () => { if (canMove()) send({ t: "end" }); },
+      tray: (e) => { const b = e.target.closest(".sq-slot"); if (b) pickWeapon(b.dataset.w); },
       disconnect: () => setReconnecting(true),
       connect: () => setReconnecting(false),
       wheel: (e) => { e.preventDefault(); setZoom(S.cam.zoom - e.deltaY * 0.0015); },
@@ -831,6 +1043,8 @@
     S.resize.observe(document.getElementById("sq-stage"));
     fitHud();
     document.getElementById("sq-end").addEventListener("click", S.handlers.end);
+    document.getElementById("sq-tray").addEventListener("click", S.handlers.tray);
+    cv.addEventListener("pointerleave", () => { if (S) S.hover = null; });
     if (document.fonts && document.fonts.load) document.fonts.load(`40px Bangers`).catch(() => {});
     send({ t: "hello" });
     S.raf = requestAnimationFrame(render);

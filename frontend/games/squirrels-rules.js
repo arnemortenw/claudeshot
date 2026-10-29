@@ -49,9 +49,33 @@
     ["Squeaks", "Frothy", "Nutjob"],
   ];
 
+  // Every weapon in the tray, from design v8. kind says how it's aimed:
+  //   shot     drag back and let go; flies in an arc (wind if `wind`)
+  //   beam     drag back and let go; a straight line, no arc, no wind
+  //   melee    click; hits whoever is right next to you, on the side you click
+  //   strike   click a spot; drops from the sky there
+  //   teleport click a spot; moves you there and doesn't use your attack
   const WEAPONS = {
-    bazooka: { name: "Acorn Bazooka", icon: "🌰", dmg: 45, r: 40, speed: 23, wind: true,
+    bazooka:  { name: "Acorn Bazooka", short: "Bazooka", icon: "🌰", kind: "shot", dmg: 45, r: 40, speed: 23, wind: true, dmgText: "45 dmg",
       how: "Acorn Bazooka · drag back to aim, let go to fire. The wind pushes it" },
+    grenade:  { name: "Nut Grenade", short: "Grenade", icon: "💣", kind: "shot", dmg: 55, r: 50, speed: 19, fuse: 3 * 60, bounce: true, dmgText: "55 dmg",
+      how: "Nut Grenade · bounces, goes off after 3 seconds" },
+    blaster:  { name: "Nut Blaster", short: "Blaster", icon: "🔫", kind: "beam", dmg: 30, r: 16, splash: 18, range: 1100, dmgText: "30 dmg",
+      how: "Nut Blaster · drag back to point, let go: a straight blast. No arc, no wind" },
+    punch:    { name: "Macadamia Nut Punch", short: "Mac Punch", icon: "👊", kind: "melee", dmg: 30, kx: 5, ky: -12, hop: true, shout: "POW!", miss: "*punches the air*", dmgText: "30 + launch",
+      how: "Macadamia Nut Punch · click to uppercut whoever is right next to you. Sends them flying" },
+    cluster:  { name: "Pinecone Cluster", short: "Pinecone", icon: "🌲", kind: "shot", dmg: 25, r: 32, speed: 21.5, wind: true, split: 5, dmgText: "25 + 5×15",
+      how: "Pinecone Cluster · bursts into 5 pine nuts on impact" },
+    bite:     { name: "Rabid Bite", short: "Bite", icon: "🦷", kind: "melee", dmg: 35, kx: 8, ky: -6, shout: "CHOMP!", miss: "*bites the air*", dmgText: "35 dmg",
+      how: "Rabid Bite · click to bite whoever is right next to you. Huge knockback" },
+    coconut:  { name: "Coconut Strike", short: "Coconut", icon: "🥥", kind: "strike", dmg: 70, r: 62, dmgText: "70 dmg",
+      how: "Coconut Strike · click a spot, a coconut drops from the sky" },
+    teleport: { name: "Teleport", short: "Teleport", icon: "✨", kind: "teleport", dmgText: "no dmg",
+      how: "Teleport · click anywhere to pop up there. You still get your shot" },
+    napalm:   { name: "Pistachio Napalm", short: "Napalm", icon: "🔥", kind: "shot", pickup: true, dmgText: "12 + fire",
+      how: "Pistachio Napalm · found on the map" },
+    hbomb:    { name: "Golden Hazelnut H-Bomb", short: "H-Bomb", icon: "☢️", kind: "shot", pickup: true, dmgText: "instant kill",
+      how: "Golden Hazelnut H-Bomb · found on the map" },
   };
   const WIND_PUSH = 0.045;                 // per frame, times the wind (-1 .. 1)
 
@@ -293,10 +317,54 @@
     return { x: s.x + Math.cos(ang) * 16, y: s.y - 24 + Math.sin(ang) * 16, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp };
   }
 
+  // ---------------------------------------------------------------- weapons
+  const ORDER = ["bazooka", "grenade", "blaster", "punch", "cluster", "bite", "coconut", "teleport", "napalm", "hbomb"];
+  const START = ["bazooka", "grenade", "blaster", "punch"];
+  const ROUND_UNLOCKS = ["cluster", "bite", "coconut"];   // at the start of rounds 2, 3 and 4
+  const PINE = { dmg: 15, r: 24 };         // each of the cluster's pine nuts
+  const RETREAT_SECONDS = 5;
+  const MELEE_REACH = 40;                  // px in front of the squirrel
+
+  // The weapons everyone has at the start of a round.
+  function unlockedFor(round) {
+    return START.concat(ROUND_UNLOCKS.slice(0, Math.max(0, round - 1)));
+  }
+
+  // What's written on a locked slot.
+  function lockText(w) {
+    if (w === "teleport") return "Kill to unlock";
+    if (WEAPONS[w].pickup) return "Find on map";
+    return `Round ${ROUND_UNLOCKS.indexOf(w) + 2}`;
+  }
+
+  // The Nut Blaster's line from squirrel s at angle ang: walks out 2 px at a
+  // time and stops at the first squirrel or solid pixel, the hazard, the map's
+  // edge or the end of its range. isSolid(x, y) tests the terrain.
+  // Returns { x0, y0, x, y, victim } with victim a squirrel or null.
+  function blasterTrace(isSolid, squirrels, s, ang) {
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    const x0 = s.x + dx * 18, y0 = s.y - 24 + dy * 18;
+    let x = x0, y = y0, victim = null;
+    for (let t = 0; t < WEAPONS.blaster.range; t += 2) {
+      x = x0 + dx * t; y = y0 + dy * t;
+      if (y > WATER || x < 0 || x > W || y < 0) break;
+      victim = squirrels.find((q) => q !== s && !q.drowned && !q.dead && Math.hypot(q.x - x, q.y - 22 - y) < 15) || null;
+      if (victim || isSolid(x, y)) break;
+    }
+    return { x0, y0, x, y, victim };
+  }
+
+  // Who a punch or bite from s, facing face (1 or -1), reaches.
+  function meleeVictims(squirrels, s, face) {
+    return squirrels.filter((q) => q !== s && !q.drowned && !q.dead &&
+      (q.x - s.x) * face > -4 && (q.x - s.x) * face < MELEE_REACH && Math.abs(q.y - s.y) < 30);
+  }
+
   return {
     SW, SH, K, W, H, WATER, G, FPS, TURN_SECONDS, MAX_STEPS, JUMP_COST, WALK_STEP, AIR_STEER_COST, STEP_UP,
     SIZE, MIN_SQUIRRELS, MAX_SQUIRRELS, MIN_PLAYERS, MAX_PLAYERS, SPAWN_GAP, POWER_DRAG, MIN_DRAG,
     PLAYER_COLORS, SQUIRREL_NAMES, WEAPONS, WIND_PUSH, MAPS, OAK_GRASS,
     mulberry, oakGround, makeTerrain, solid, crater, dropY, standable, spawns, aimFromDrag, launch,
+    ORDER, START, ROUND_UNLOCKS, PINE, RETREAT_SECONDS, MELEE_REACH, unlockedFor, lockText, blasterTrace, meleeVictims,
   };
 });
