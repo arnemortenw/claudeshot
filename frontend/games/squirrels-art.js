@@ -16,7 +16,7 @@
     pig:     { name: "Porky Nutbank", fur: "#a86a3c", furDark: "#74431f", muzzle: "#f0cfa0", outfit: "#ff7eb6", outfit2: "#ffd23f", iris: "#c2185b", trim: "#a8326a" },
     spud:    { name: "Mr. Nut Head", fur: "#9a9088", furDark: "#655d57", muzzle: "#e9e1d6", outfit: "#d9ae6c", outfit2: "#3a8bfd", iris: "#2f7ad8", trim: "#a77c45" },
   };
-  // Until the lobby pick lands, each player slot gets its own toy.
+  // A toy per player slot, for when a player has none picked in the lobby.
   const SLOT_TOYS = ["sheriff", "ranger", "dino", "bo", "pig", "spud"];
   const toyFor = (slot) => SLOT_TOYS[slot % SLOT_TOYS.length];
 

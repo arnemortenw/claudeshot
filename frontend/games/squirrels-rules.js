@@ -86,6 +86,8 @@
     { key: "ranger", name: "Space Ranger Nutz", line: "“To the nut pile and beyond!”" },
     { key: "dino", name: "Rexie Nutkin", line: "“I’m a very anxious rabid dinosaur.”" },
     { key: "bo", name: "Bo Squeak", line: "“Baa. Baa. Bite.”" },
+    { key: "pig", name: "Porky Nutbank", line: "“Insert nut. Lose a finger.”" },
+    { key: "spud", name: "Mr. Nut Head", line: "“Some assembly required. Mostly rabies.”" },
   ];
   const isToy = (key) => TOYS.some((t) => t.key === key);
 

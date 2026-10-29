@@ -100,9 +100,9 @@ test("falling into the pool or the lava kills, with that hazard's lines", () => 
 // ---------------------------------------------------------------- the lobby
 // socket ids are unique across rooms, as they are on the real server
 let nextRoom = 0;
-function squirrelsRoom(n) {
+function squirrelsRoom(n, max = 6) {
   const k = ++nextRoom;
-  const room = rooms.createRoom(`h${k}`, "Host", "squirrels", 6);
+  const room = rooms.createRoom(`h${k}`, "Host", "squirrels", max);
   for (let i = 1; i < n; i++) rooms.joinRoom(room.code, `g${k}-${i}`, "Guest" + i);
   return room;
 }
@@ -130,20 +130,25 @@ test("the server rejects a toy someone has already taken", () => {
   assert.ok(rooms.pickToy(room.code, g1.id, "dragon").error);
 });
 
-test("once every toy is taken, players 5 and 6 may share one", () => {
+test("six players get six different toys and can't take each other's", () => {
   const room = squirrelsRoom(6);
-  assert.equal(new Set(room.players.slice(0, R.TOYS.length).map((p) => p.toy)).size, R.TOYS.length);
-  const p5 = room.players[4];
-  assert.ok(R.isToy(p5.toy), "player 5 got a toy");
-  const other = R.TOYS.find((t) => t.key !== p5.toy).key;
-  assert.equal(rooms.pickToy(room.code, p5.id, other), room, "a shared toy is allowed when none is free");
-  // with three players left a toy is free again, so no more sharing
-  for (const id of [room.players[5].id, room.players[2].id, room.players[1].id]) rooms.leaveRoom(id);
-  assert.equal(room.players.length, 3);
-  const freed = R.TOYS.find((t) => !room.players.some((p) => p.toy === t.key));
-  assert.ok(freed, "a toy is free");
-  const taken = room.players[0].toy;
-  assert.ok(rooms.pickToy(room.code, p5.id, taken).error, "no sharing while a toy is free");
+  assert.equal(new Set(room.players.map((p) => p.toy)).size, 6);
+  const [p1, , , , p5] = room.players;
+  assert.ok(rooms.pickToy(room.code, p5.id, p1.toy).error);
+});
+
+test("only once every toy is taken may two players share one", () => {
+  // more players than toys: the room is bigger than any real Rabid Squirrels room
+  const room = squirrelsRoom(R.TOYS.length + 1, R.TOYS.length + 2);
+  const extra = room.players[R.TOYS.length];
+  assert.ok(R.isToy(extra.toy), "the extra player still gets a toy");
+  const other = R.TOYS.find((t) => t.key !== extra.toy).key;
+  assert.equal(rooms.pickToy(room.code, extra.id, other), room, "sharing is allowed when no toy is free");
+  // with a player gone a toy is free again, so no more sharing
+  rooms.leaveRoom(room.players[1].id);
+  rooms.leaveRoom(room.players[2].id);
+  const taken = room.players.find((p) => p !== extra && p.toy !== extra.toy).toy;
+  assert.ok(rooms.pickToy(room.code, extra.id, taken).error, "no sharing while a toy is free");
 });
 
 test("only the host picks the map and the squirrels per player", () => {
